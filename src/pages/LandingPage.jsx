@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, animate } from 'framer-motion';
 import {
   Building2, ChevronRight, Shield, Globe, MapPin,
   TrendingUp, Users, ArrowRight, CheckCircle2,
   Phone, Star, Briefcase, BarChart3
 } from 'lucide-react';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
+import CityBlueprint from '../components/CityBlueprint';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
@@ -19,81 +22,138 @@ const stagger = {
   visible: { transition: { staggerChildren: 0.12 } }
 };
 
-function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
+function Counter({ value, duration = 2, suffix = "", prefix = "" }) {
+  const [displayValue, setDisplayValue] = useState(0);
   useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 40);
-    window.addEventListener('scroll', handler);
-    return () => window.removeEventListener('scroll', handler);
-  }, []);
-
-  return (
-    <motion.nav
-      initial={{ y: -80, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.6 }}
-      className={`navbar ${scrolled ? 'scrolled' : ''}`}
-    >
-      <div className="container navbar-inner">
-        <Link to="/" className="nav-logo">
-          <Building2 size={26} color="#1e40af" />
-          Brokrs<span>House</span>
-        </Link>
-        <ul className="nav-links hide-mobile">
-          <li><a href="#features">Services</a></li>
-          <li><a href="#network">Network</a></li>
-          <li><a href="#contact">Contact</a></li>
-          <li>
-            <Link to="/register" className="btn btn-primary btn-sm">
-              Register Now <ArrowRight size={15} />
-            </Link>
-          </li>
-        </ul>
-      </div>
-    </motion.nav>
-  );
+    const controls = animate(0, value, {
+      duration,
+      ease: "easeOut",
+      onUpdate: (v) => setDisplayValue(Math.floor(v)),
+    });
+    return () => controls.stop();
+  }, [value, duration]);
+  return <>{prefix}{displayValue.toLocaleString()}{suffix}</>;
 }
 
-function HeroBuildings() {
-  const buildings = [
-    { w: 48, h: 120, color: '#bfdbfe', delay: 0 },
-    { w: 56, h: 180, color: '#93c5fd', delay: 0.1 },
-    { w: 64, h: 240, color: '#3b82f6', delay: 0.2 },
-    { w: 72, h: 200, color: '#1e40af', delay: 0.3 },
-    { w: 56, h: 160, color: '#60a5fa', delay: 0.4 },
-    { w: 48, h: 130, color: '#93c5fd', delay: 0.5 },
-    { w: 40, h: 100, color: '#bfdbfe', delay: 0.6 },
+
+
+function HeroGraph() {
+  const data = [
+    { month: 'Jan', value: 32, total: 1200, growth: '+12%' },
+    { month: 'Feb', value: 45, total: 1540, growth: '+28%' },
+    { month: 'Mar', value: 42, total: 1890, growth: '+22.5%' },
+    { month: 'Apr', value: 68, total: 2100, growth: '+10.8%' },
+    { month: 'May', value: 65, total: 2350, growth: '+11.9%' },
+    { month: 'Jun', value: 88, total: 2500, growth: '+6.4%' }
   ];
 
+  const [hovered, setHovered] = useState(null);
+  const width = 360;
+  const height = 180;
+  const paddingY = 40;
+
+  const points = data.map((d, i) => ({
+    x: (i / (data.length - 1)) * width,
+    y: height - (d.value / 100) * (height - paddingY * 2) - paddingY
+  }));
+
+  const drawPath = `M ${points.map(p => `${p.x},${p.y}`).join(' L ')}`;
+
   return (
-    <div className="building-card">
-      <div className="building-illustration">
-        {buildings.map((b, i) => (
-          <motion.div
-            key={i}
-            className="building-bar"
-            style={{ width: b.w, background: b.color }}
-            initial={{ height: 0 }}
-            animate={{ height: b.h }}
-            transition={{ duration: 1.2, delay: 0.5 + b.delay, ease: [0.34, 1.56, 0.64, 1] }}
-          />
-        ))}
+    <div className="building-card no-padding" style={{ overflow: 'visible' }}>
+      <div style={{ padding: '32px 32px 0' }}>
+        <div style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+          <span>MARKET GROWTH</span>
+          <span style={{ color: '#059669' }}><Counter value={88} suffix="%" /></span>
+        </div>
       </div>
 
-      <div style={{ padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ position: 'relative', height: 240, marginTop: 20, width: '100%' }}>
+        <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible', display: 'block' }}>
+          <defs>
+            <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#3b82f6" />
+              <stop offset="50%" stopColor="#1e40af" />
+              <stop offset="100%" stopColor="#b8860b" />
+            </linearGradient>
+            <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="rgba(30,64,175,0.15)" />
+              <stop offset="100%" stopColor="rgba(30,64,175,0)" />
+            </linearGradient>
+          </defs>
+
+          {/* Area under line */}
+          <path
+            d={`${drawPath} L ${points[points.length - 1].x},${height} L 0,${height} Z`}
+            fill="url(#areaGradient)"
+          />
+
+          {/* The Line */}
+          <motion.path
+            d={drawPath}
+            fill="none"
+            stroke="url(#lineGradient)"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 1.5, ease: "easeInOut" }}
+          />
+
+          {/* Dots and Interaction */}
+          {points.map((p, i) => (
+            <g key={i} onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}>
+              <circle cx={p.x} cy={p.y} r="16" fill="transparent" style={{ cursor: 'pointer' }} />
+              <motion.circle
+                cx={p.x} cy={p.y} r={4}
+                fill={hovered === i ? '#1e40af' : '#3b82f6'}
+                stroke="#fff" strokeWidth="2"
+                initial={{ r: 4 }}
+                animate={{ r: hovered === i ? 6 : 4 }}
+              />
+            </g>
+          ))}
+        </svg>
+
+        {/* Floating Tooltip */}
+        {hovered !== null && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            style={{
+              position: 'absolute',
+              left: points[hovered].x,
+              top: points[hovered].y - 65,
+              transform: 'translateX(-50%)',
+              background: '#0f172a',
+              color: '#fff',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+              pointerEvents: 'none',
+              zIndex: 10,
+              minWidth: 100
+            }}
+          >
+            <div style={{ fontSize: 10, opacity: 0.6, fontWeight: 700, marginBottom: 2 }}>{data[hovered].month} REPORT</div>
+            <div style={{ fontWeight: 800, fontSize: 13 }}>{data[hovered].total} Brokers</div>
+            <div style={{ color: '#10b981', fontWeight: 700, fontSize: 11 }}>{data[hovered].growth} Growth</div>
+          </motion.div>
+        )}
+      </div>
+
+      <div style={{ padding: '0 24px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600 }}>Total Portfolio Value</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>₹482Cr+</div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontSize: 14, fontWeight: 700 }}>
-          <TrendingUp size={16} /> +24.5%
+          <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>
+            <Counter value={482} prefix="₹" suffix="Cr+" />
+          </div>
         </div>
       </div>
 
-      <motion.div
-        className="floating-badge animate-float"
-        style={{ top: 20, right: -30 }}
-      >
+      <motion.div className="floating-badge animate-float" style={{ top: 20, right: -40 }}>
         <div className="floating-badge-icon" style={{ background: 'rgba(5,150,105,0.1)', color: '#059669' }}>
           <CheckCircle2 size={20} />
         </div>
@@ -103,10 +163,7 @@ function HeroBuildings() {
         </div>
       </motion.div>
 
-      <motion.div
-        className="floating-badge animate-float-delayed"
-        style={{ bottom: 80, left: -40 }}
-      >
+      <motion.div className="floating-badge animate-float-delayed" style={{ bottom: 240, left: -48 }}>
         <div className="floating-badge-icon" style={{ background: 'rgba(30,64,175,0.08)', color: '#1e40af' }}>
           <MapPin size={20} />
         </div>
@@ -123,7 +180,7 @@ function Hero() {
   return (
     <section className="hero">
       <div className="hero-bg">
-        <img src="/hero-bg.png" alt="" />
+        <CityBlueprint />
         <div className="hero-bg-overlay" />
       </div>
       <div className="hero-grid-pattern" />
@@ -151,12 +208,14 @@ function Hero() {
           </motion.div>
           <motion.div variants={fadeUp} custom={4} className="hero-stats">
             {[
-              { value: '2,500+', label: 'Active Brokers' },
-              { value: '₹482Cr', label: 'Assets Managed' },
-              { value: '150+', label: 'Cities Covered' },
+              { value: 2500, label: 'Active Brokers', suffix: '+' },
+              { value: 482, label: 'Assets Managed', prefix: '₹', suffix: 'Cr' },
+              { value: 150, label: 'Cities Covered', suffix: '+' },
             ].map((s, i) => (
               <div key={i}>
-                <div className="hero-stat-value">{s.value}</div>
+                <div className="hero-stat-value">
+                  <Counter value={s.value} prefix={s.prefix} suffix={s.suffix} />
+                </div>
                 <div className="hero-stat-label">{s.label}</div>
               </div>
             ))}
@@ -169,7 +228,7 @@ function Hero() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.9, delay: 0.3 }}
         >
-          <HeroBuildings />
+          <HeroGraph />
         </motion.div>
       </div>
     </section>
@@ -266,7 +325,7 @@ function NetworkSection() {
 
 function CTASection() {
   return (
-    <section id="contact" className="section" style={{ background: '#0f172a', color: '#fff' }}>
+    <section id="contact" className="section" style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', color: 'var(--text)', borderTop: '1px solid var(--border-light)' }}>
       <div className="container text-center">
         <motion.div
           initial="hidden" whileInView="visible" viewport={{ once: true }}
@@ -278,11 +337,11 @@ function CTASection() {
           >
             Ready to Grow Your<br />Real Estate Business?
           </motion.h2>
-          <motion.p variants={fadeUp} style={{ fontSize: 17, color: 'rgba(255,255,255,0.6)', maxWidth: 500, margin: '0 auto 40px', lineHeight: 1.7 }}>
+          <motion.p variants={fadeUp} style={{ fontSize: 17, color: 'var(--text-secondary)', maxWidth: 500, margin: '0 auto 40px', lineHeight: 1.7 }}>
             Register today and become part of India's most trusted broker network. It takes less than 2 minutes.
           </motion.p>
           <motion.div variants={fadeUp}>
-            <Link to="/register" className="btn btn-white btn-lg">
+            <Link to="/register" className="btn btn-primary btn-lg">
               Register as Broker <ArrowRight size={18} />
             </Link>
           </motion.div>
@@ -292,51 +351,7 @@ function CTASection() {
   );
 }
 
-function Footer() {
-  return (
-    <footer className="footer">
-      <div className="container">
-        <div className="footer-grid">
-          <div className="footer-brand">
-            <div className="nav-logo" style={{ color: '#fff', marginBottom: 0 }}>
-              <Building2 size={24} color="#3b82f6" />
-              Brokrs<span style={{ color: '#3b82f6' }}>House</span>
-            </div>
-            <p>India's premier digital platform connecting licensed real estate brokers with verified institutional clients.</p>
-          </div>
-          <div>
-            <h4 className="footer-heading">Platform</h4>
-            <ul className="footer-links">
-              <li><a href="#features">Services</a></li>
-              <li><a href="#network">Network</a></li>
-              <li><Link to="/register">Register</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="footer-heading">Company</h4>
-            <ul className="footer-links">
-              <li><a href="#">About Us</a></li>
-              <li><a href="#">Careers</a></li>
-              <li><a href="#">Blog</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="footer-heading">Legal</h4>
-            <ul className="footer-links">
-              <li><a href="#">Privacy Policy</a></li>
-              <li><a href="#">Terms of Service</a></li>
-              <li><a href="#">Compliance</a></li>
-            </ul>
-          </div>
-        </div>
-        <div className="footer-bottom">
-          <span>© 2026 BrokrsHouse. All rights reserved.</span>
-          <span>Made with ❤️ in India</span>
-        </div>
-      </div>
-    </footer>
-  );
-}
+
 
 export default function LandingPage() {
   return (

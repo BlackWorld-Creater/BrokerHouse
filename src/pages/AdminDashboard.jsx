@@ -11,6 +11,7 @@ export default function AdminDashboard() {
   const [brokers, setBrokers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filterCity, setFilterCity] = useState('');
   const navigate = useNavigate();
 
   const token = localStorage.getItem('admin_token');
@@ -61,11 +62,18 @@ export default function AdminDashboard() {
     navigate('/admin');
   };
 
-  const filtered = brokers.filter(b =>
-    b.name?.toLowerCase().includes(search.toLowerCase()) ||
-    b.broker_location?.toLowerCase().includes(search.toLowerCase()) ||
-    b.mobile?.includes(search)
-  );
+  const filtered = brokers.filter(b => {
+    const matchesSearch = 
+      b.name?.toLowerCase().includes(search.toLowerCase()) ||
+      b.broker_location?.toLowerCase().includes(search.toLowerCase()) ||
+      b.mobile?.includes(search);
+    
+    const matchesCity = filterCity === '' || b.broker_location === filterCity;
+    
+    return matchesSearch && matchesCity;
+  });
+
+  const cities = [...new Set(brokers.map(b => b.broker_location))].sort();
 
   const uniqueCities = [...new Set(brokers.map(b => b.broker_location))].length;
 
@@ -154,17 +162,30 @@ export default function AdminDashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="flex items-center justify-between" style={{ marginBottom: 20 }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
             <h3 style={{ fontSize: 18, fontWeight: 700 }}>Registered Brokers</h3>
-            <div className="form-input-icon" style={{ width: 280 }}>
-              <Search size={16} />
-              <input
-                className="form-input"
-                placeholder="Search by name, city, or phone..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ fontSize: 13, padding: '10px 14px 10px 42px' }}
-              />
+            <div className="flex items-center gap-3" style={{ flexWrap: 'wrap' }}>
+              <select 
+                className="form-input" 
+                value={filterCity}
+                onChange={(e) => setFilterCity(e.target.value)}
+                style={{ width: 180, fontSize: 13, padding: '10px 14px' }}
+              >
+                <option value="">All Locations</option>
+                {cities.map(city => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+              <div className="form-input-icon" style={{ width: 280 }}>
+                <Search size={16} />
+                <input
+                  className="form-input"
+                  placeholder="Search by name or phone..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{ fontSize: 13, padding: '10px 14px 10px 42px' }}
+                />
+              </div>
             </div>
           </div>
 
@@ -203,8 +224,21 @@ export default function AdminDashboard() {
                       <tr key={b.id}>
                         <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{i + 1}</td>
                         <td className="name-cell">{b.name}</td>
-                        <td>{b.mobile}</td>
-                        <td>{b.whatsapp}</td>
+                        <td>
+                          <a href={`tel:${b.mobile}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>
+                            {b.mobile}
+                          </a>
+                        </td>
+                        <td>
+                          <a 
+                            href={`https://wa.me/91${b.whatsapp?.replace(/[^0-9]/g, '')}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{ color: '#25D366', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
+                          >
+                            {b.whatsapp}
+                          </a>
+                        </td>
                         <td>
                           <div className="flex items-center gap-1">
                             <MapPin size={13} color="var(--text-muted)" />

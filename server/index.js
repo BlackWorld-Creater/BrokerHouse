@@ -12,7 +12,12 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '.env') });
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 app.use(express.json());
 
 const pool = new pg.Pool({
@@ -47,7 +52,7 @@ const ADMIN_PASSWORD = 'Pass@123';
 // POST /api/register — Broker registration
 app.post('/api/register', async (req, res) => {
   const { name, mobile, whatsapp, broker_location, covering_location } = req.body;
-  
+
   if (!name || !mobile || !whatsapp || !broker_location || !covering_location) {
     return res.status(400).json({ error: 'All fields are required' });
   }
