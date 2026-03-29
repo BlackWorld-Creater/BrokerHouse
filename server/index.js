@@ -117,8 +117,12 @@ app.delete('/api/admin/brokers/:id', authMiddleware, async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 
-initDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 BrokrsHouse API running on http://localhost:${PORT}`);
+if (process.env.NODE_ENV !== 'production') {
+  initDB().then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 BrokrsHouse API running on http://localhost:${PORT}`);
+    });
   });
-});
+}
+
+export default app;
