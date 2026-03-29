@@ -5,8 +5,7 @@ import {
   Building2, Phone, MessageSquare, MapPin, ArrowRight,
   CheckCircle2, ArrowLeft, Shield, Globe, Users
 } from 'lucide-react';
-
-const API_URL = 'http://localhost:3001';
+import { API_URL } from '../config';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },

@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Building2, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
-
-const API_URL = 'http://localhost:3001';
+import { API_URL } from '../config';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');

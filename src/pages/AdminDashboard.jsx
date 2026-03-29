@@ -5,8 +5,7 @@ import {
   Building2, Users, MapPin, Phone, LogOut, Trash2,
   RefreshCw, Calendar, Search, Download
 } from 'lucide-react';
-
-const API_URL = 'http://localhost:3001';
+import { API_URL } from '../config';
 
 export default function AdminDashboard() {
   const [brokers, setBrokers] = useState([]);
