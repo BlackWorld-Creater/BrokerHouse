@@ -8,11 +8,13 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 
 import ScrollToTop from './components/ScrollToTop';
+import CityBlueprint from './components/CityBlueprint';
 
 export default function App() {
   return (
     <Router>
       <ScrollToTop />
+      <CityBlueprint />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/register" element={<RegisterPage />} />

@@ -18,14 +18,29 @@ const fadeUp = {
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
     name: '', mobile: '', whatsapp: '',
-    broker_location: '', covering_location: ''
+    broker_location: '', state: '', covering_location: ''
   });
+  const [whatsappSame, setWhatsappSame] = useState(true);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleMobileChange = (e) => {
+    const mobile = e.target.value;
+    setFormData(prev => ({ ...prev, mobile, ...(whatsappSame && { whatsapp: mobile }) }));
+  };
+
+  const toggleWhatsappSame = () => {
+    setWhatsappSame(!whatsappSame);
+    if (!whatsappSame) {
+      setFormData(prev => ({ ...prev, whatsapp: prev.mobile }));
+    } else {
+      setFormData(prev => ({ ...prev, whatsapp: '' }));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -127,8 +142,22 @@ export default function RegisterPage() {
                             value={formData.name} onChange={handleChange}
                           />
                         </div>
+                      </div>
+
+                      <div className="grid grid-2 gap-6">
                         <div className="form-group">
-                          <label className="form-label">Broker Location *</label>
+                          <label className="form-label">State *</label>
+                          <div className="form-input-icon">
+                            <MapPin size={16} />
+                            <input
+                              name="state" required className="form-input"
+                              placeholder="e.g. Maharashtra"
+                              value={formData.state} onChange={handleChange}
+                            />
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">City / Broker Location *</label>
                           <div className="form-input-icon">
                             <MapPin size={16} />
                             <input
@@ -148,21 +177,31 @@ export default function RegisterPage() {
                             <input
                               name="mobile" required className="form-input"
                               placeholder="+91 98765 43210"
-                              value={formData.mobile} onChange={handleChange}
+                              value={formData.mobile} onChange={handleMobileChange}
                             />
                           </div>
                         </div>
-                        <div className="form-group">
-                          <label className="form-label">WhatsApp Number *</label>
-                          <div className="form-input-icon">
-                            <MessageSquare size={16} />
-                            <input
-                              name="whatsapp" required className="form-input"
-                              placeholder="+91 98765 43210"
-                              value={formData.whatsapp} onChange={handleChange}
-                            />
+                        
+                        {!whatsappSame && (
+                          <div className="form-group">
+                            <label className="form-label">WhatsApp Number *</label>
+                            <div className="form-input-icon">
+                              <MessageSquare size={16} />
+                              <input
+                                name="whatsapp" required className="form-input"
+                                placeholder="+91 98765 43210"
+                                value={formData.whatsapp} onChange={handleChange}
+                              />
+                            </div>
                           </div>
-                        </div>
+                        )}
+                      </div>
+
+                      <div className="form-group" style={{ marginTop: -16, marginBottom: 8 }}>
+                        <label className="flex items-center gap-2" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
+                          <input type="checkbox" checked={whatsappSame} onChange={toggleWhatsappSame} style={{ accentColor: 'var(--primary)', width: 14, height: 14 }} />
+                          WhatsApp number is same as Mobile
+                        </label>
                       </div>
 
                       <div className="form-group">
@@ -201,7 +240,7 @@ export default function RegisterPage() {
                     Our team will review your details and contact you within 24 hours.
                   </p>
                   <div className="flex gap-4 justify-center">
-                    <button onClick={() => { setSuccess(false); setFormData({ name: '', mobile: '', whatsapp: '', broker_location: '', covering_location: '' }); }} className="btn btn-outline">
+                    <button onClick={() => { setSuccess(false); setFormData({ name: '', mobile: '', whatsapp: '', broker_location: '', state: '', covering_location: '' }); }} className="btn btn-outline">
                       Register Another
                     </button>
                     <Link to="/" className="btn btn-primary">

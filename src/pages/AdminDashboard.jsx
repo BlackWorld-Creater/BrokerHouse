@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Building2, Users, MapPin, Phone, LogOut, Trash2,
-  RefreshCw, Calendar, Search, Download
+  RefreshCw, Calendar, Search, Download, Eye, EyeOff
 } from 'lucide-react';
 import { API_URL } from '../config';
 
 export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState('brokers');
   const [brokers, setBrokers] = useState([]);
+  const [citiesData, setCitiesData] = useState([]);
+  const [newCityName, setNewCityName] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCity, setFilterCity] = useState('');
@@ -21,11 +24,19 @@ export default function AdminDashboard() {
       navigate('/admin');
       return;
     }
-    fetchBrokers();
+    fetchData();
   }, []);
 
-  const fetchBrokers = async () => {
+  const fetchData = async () => {
     setLoading(true);
+    try {
+      await Promise.all([fetchBrokers(), fetchCities()]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchBrokers = async () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/brokers`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -39,8 +50,70 @@ export default function AdminDashboard() {
       setBrokers(data);
     } catch (err) {
       console.error('Fetch error:', err);
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  const fetchCities = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/cities`);
+      if (res.ok) {
+        const data = await res.json();
+        setCitiesData(data);
+      }
+    } catch (err) {
+      console.error('Fetch cities error:', err);
+    }
+  };
+
+  const addCity = async (e) => {
+    e.preventDefault();
+    if (!newCityName.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/api/admin/cities`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: newCityName.trim() })
+      });
+      if (res.ok) {
+        setNewCityName('');
+        fetchCities();
+      } else {
+        alert('Failed to add city (might already exist)');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const deleteCity = async (id) => {
+    if (!window.confirm('Delete this city?')) return;
+    try {
+      await fetch(`${API_URL}/api/admin/cities/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCitiesData(citiesData.filter(c => c.id !== id));
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
+  };
+
+  const toggleCity = async (id, isActive) => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/cities/${id}/toggle`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setCitiesData(citiesData.map(c => 
+          c.id === id ? { ...c, is_active: !isActive } : c
+        ));
+      }
+    } catch (err) {
+      console.error('Toggle error:', err);
     }
   };
 
@@ -105,18 +178,40 @@ export default function AdminDashboard() {
       </header>
 
       <div className="container" style={{ paddingTop: 32, paddingBottom: 60 }}>
-        {/* Page Title */}
+        {/* Page Title & Tabs */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           style={{ marginBottom: 32 }}
         >
-          <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>Dashboard</h1>
-          <p style={{ fontSize: 15, color: 'var(--text-muted)' }}>
-            Manage all broker registrations from one place.
-          </p>
+          <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 16 }}>
+            <div>
+              <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>Dashboard</h1>
+              <p style={{ fontSize: 15, color: 'var(--text-muted)' }}>
+                Manage brokers and platform data from one place.
+              </p>
+            </div>
+            <div className="flex bg-gray-100 p-1 rounded-lg" style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 4 }}>
+              <button 
+                className={`btn btn-sm ${activeTab === 'brokers' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setActiveTab('brokers')}
+                style={{ border: 'none' }}
+              >
+                <Users size={16} /> Brokers
+              </button>
+              <button 
+                className={`btn btn-sm ${activeTab === 'cities' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setActiveTab('cities')}
+                style={{ border: 'none' }}
+              >
+                <MapPin size={16} /> Cities
+              </button>
+            </div>
+          </div>
         </motion.div>
 
+        {activeTab === 'brokers' && (
+        <>
         {/* Stats */}
         <motion.div
           className="admin-stats-grid"
@@ -272,6 +367,76 @@ export default function AdminDashboard() {
             )}
           </div>
         </motion.div>
+        </>
+        )}
+
+        {/* CITIES TAB */}
+        {activeTab === 'cities' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <div className="data-table-container" style={{ padding: 24 }}>
+              <div className="flex justify-between items-center" style={{ marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 700 }}>Managed Cities</h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>These cities appear on the landing page.</p>
+                </div>
+                <form onSubmit={addCity} className="flex gap-2">
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="E.g. Pune" 
+                    value={newCityName}
+                    onChange={(e) => setNewCityName(e.target.value)}
+                    required
+                  />
+                  <button type="submit" className="btn btn-primary">Add City</button>
+                </form>
+              </div>
+
+              {citiesData.length === 0 ? (
+                <div className="empty-state">
+                  <MapPin size={48} />
+                  <p>No cities added yet.</p>
+                </div>
+              ) : (
+                <div className="grid grid-4 gap-4">
+                  {citiesData.map(c => (
+                    <div key={c.id} className="card flex justify-between items-center" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div className="flex items-center gap-2">
+                        <MapPin size={18} color="var(--primary)" />
+                        <span style={{ fontWeight: 600 }}>{c.name}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 12, background: c.is_active !== false ? 'var(--success-soft)' : 'var(--danger-soft)', color: c.is_active !== false ? 'var(--success)' : 'var(--danger)' }}>
+                          {c.is_active !== false ? 'Enabled' : 'Disabled'}
+                        </div>
+                        <button 
+                          onClick={() => toggleCity(c.id, c.is_active !== false)}
+                          className="btn btn-sm btn-ghost" 
+                          style={{ color: 'var(--text-secondary)', padding: 6 }}
+                          title={c.is_active !== false ? "Disable" : "Enable"}
+                        >
+                          {c.is_active !== false ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                        <button 
+                          onClick={() => deleteCity(c.id)}
+                          className="btn btn-sm btn-ghost" 
+                          style={{ color: 'var(--danger)', padding: 6 }}
+                          title="Delete City"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

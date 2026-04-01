@@ -6,19 +6,22 @@ export default function CityBlueprint() {
     hidden: { pathLength: 0, opacity: 0 },
     visible: (i) => ({
       pathLength: 1,
-      opacity: 0.15,
+      opacity: [0.05, 0.15, 0.05],
       transition: {
-        pathLength: { delay: i * 0.2, duration: 2, ease: "easeInOut" },
-        opacity: { delay: i * 0.2, duration: 0.5 }
+        pathLength: { delay: i * 0.2, duration: 3, ease: "easeInOut", repeat: Infinity, repeatType: "reverse", repeatDelay: 1 },
+        opacity: { delay: i * 0.2, duration: 4, ease: "easeInOut", repeat: Infinity, repeatType: "reverse" }
       }
     })
   };
 
   return (
     <div style={{
-      position: 'absolute',
-      inset: 0,
-      zIndex: 1,
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      zIndex: -1,
       opacity: 0.6,
       pointerEvents: 'none',
       overflow: 'hidden'
