@@ -412,7 +412,7 @@ function CTASection() {
         >
           <motion.h2
             variants={fadeUp}
-            style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 800, marginBottom: 18, lineHeight: 1.15 }}
+            style={{ fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 800, marginBottom: 18, lineHeight: 1.15 }}
           >
             Ready to Grow Your<br />Real Estate Business?
           </motion.h2>

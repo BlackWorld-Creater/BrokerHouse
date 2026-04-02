@@ -72,7 +72,7 @@ img {
    ============================ */
 
 .font-display {
-  font-family: 'Playfair Display', serif;
+  font-family: inherit;
 }
 
 .text-gradient {
@@ -489,7 +489,6 @@ img {
 }
 
 .hero-title {
-  font-family: 'Playfair Display', serif;
   font-size: clamp(42px, 5.5vw, 72px);
   font-weight: 800;
   line-height: 1.08;
@@ -639,7 +638,6 @@ img {
 }
 
 .section-title {
-  font-family: 'Playfair Display', serif;
   font-size: clamp(32px, 4vw, 48px);
   font-weight: 800;
   line-height: 1.15;
@@ -765,7 +763,6 @@ img {
 }
 
 .register-sidebar h2 {
-  font-family: 'Playfair Display', serif;
   font-size: 32px;
   font-weight: 800;
   line-height: 1.2;
@@ -1119,8 +1116,8 @@ img {
   margin-top: 40px;
   margin-bottom: 16px;
   color: var(--text);
-  font-family: 'Playfair Display', serif;
   font-size: 22px;
+  font-weight: 700;
 }
 
 .legal-content p {
