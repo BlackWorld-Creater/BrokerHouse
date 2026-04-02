@@ -47,7 +47,7 @@ function HeroGraph() {
     { month: 'Mar', value: 96, total: 2600, growth: '+11%' }
   ];
 
-  const [hovered, setHovered] = useState(data.length - 1);
+  const [hovered, setHovered] = useState(null);
   const width = 360;
   const height = 180;
   const paddingY = 40;
@@ -77,7 +77,12 @@ function HeroGraph() {
       </div>
 
       <div style={{ position: 'relative', height: 240, marginTop: 20, width: '100%' }}>
-        <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible', display: 'block' }}>
+        <svg 
+          width="100%" height="100%" 
+          viewBox={`0 0 ${width} ${height}`} 
+          style={{ overflow: 'visible', display: 'block' }}
+          onMouseLeave={() => setHovered(null)}
+        >
           <defs>
             <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#3b82f6" />
@@ -110,7 +115,7 @@ function HeroGraph() {
 
           {/* Dots and Interaction */}
           {points.map((p, i) => (
-            <g key={i} onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(data.length - 1)}>
+            <g key={i} onMouseEnter={() => setHovered(i)}>
               <circle cx={p.x} cy={p.y} r="16" fill="transparent" style={{ cursor: 'pointer' }} />
               <motion.circle
                 cx={p.x} cy={p.y} r={4}
