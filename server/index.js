@@ -13,7 +13,7 @@ dotenv.config({ path: join(__dirname, '.env') });
 
 const app = express();
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -223,9 +223,14 @@ app.get('/api/admin/states', authMiddleware, async (req, res) => {
 
 app.post('/api/admin/states', authMiddleware, async (req, res) => {
   const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'State name required' });
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (!trimmed) return res.status(400).json({ error: 'State name required' });
   try {
-    const result = await pool.query('INSERT INTO "States" (name) VALUES ($1) RETURNING *', [name]);
+    // UPSERT so adding an existing state doesn't fail and can re-activate it.
+    const result = await pool.query(
+      'INSERT INTO "States" (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET is_active = true RETURNING *',
+      [trimmed]
+    );
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Error adding state' });
@@ -282,12 +287,28 @@ app.get('/api/admin/cities', authMiddleware, async (req, res) => {
 
 app.post('/api/admin/cities', authMiddleware, async (req, res) => {
   const { name, state_id } = req.body;
-  if (!name || !state_id) return res.status(400).json({ error: 'Name and state_id required' });
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  const stateId = Number(state_id);
+  if (!trimmed || !Number.isFinite(stateId)) {
+    return res.status(400).json({ error: 'Name and state_id required' });
+  }
   try {
-    const result = await pool.query('INSERT INTO "Cities" (name, state_id) VALUES ($1, $2) RETURNING *', [name, state_id]);
+    // Ensure the referenced state exists (prevents FK violations)
+    const stateCheck = await pool.query('SELECT id FROM "States" WHERE id = $1', [stateId]);
+    if (stateCheck.rowCount === 0) {
+      return res.status(400).json({ error: 'State not found', state_id: stateId });
+    }
+
+    // Cities.name is UNIQUE in our schema. UPSERT to prevent admin "create" from rolling back on duplicates.
+    // This effectively moves the city to the new state and re-activates it.
+    const result = await pool.query(
+      'INSERT INTO "Cities" (name, state_id) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET state_id = EXCLUDED.state_id, is_active = true RETURNING *',
+      [trimmed, stateId]
+    );
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: 'Error adding city' });
+    console.error('Add city error:', err);
+    res.status(500).json({ error: 'Error adding city', details: err?.message });
   }
 });
 

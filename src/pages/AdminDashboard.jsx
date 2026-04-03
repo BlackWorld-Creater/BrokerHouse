@@ -145,7 +145,7 @@ export default function AdminDashboard() {
 
     // Optimistic
     const tempId = `temp-${Date.now()}`;
-    const tempCity = { id: tempId, name: cityName, state_id: stateId, is_active: 1 };
+    const tempCity = { id: tempId, name: cityName, state_id: Number(stateId), is_active: 1 };
     setCitiesData(prev => [...prev, tempCity]);
     setNewCityNames(prev => ({ ...prev, [stateId]: '' }));
 
@@ -212,7 +212,7 @@ export default function AdminDashboard() {
   };
 
   const openDeleteStateDialog = (state) => {
-    const stateCities = citiesData.filter(c => c.state_id === state.id);
+    const stateCities = citiesData.filter(c => Number(c.state_id) === Number(state.id));
     const cityCount = stateCities.length;
     setConfirmDialog({
       open: true,
@@ -631,7 +631,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="flex flex-col gap-8">
                   {statesData.map(state => {
-                    const stateCities = citiesData.filter(c => c.state_id === state.id);
+                    const stateCities = citiesData.filter(c => Number(c.state_id) === Number(state.id));
                     return (
                       <div key={state.id} className="state-card" style={{ background: 'var(--bg-pure)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
                         <div className="state-header" style={{ padding: '20px 24px', background: 'var(--bg-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
