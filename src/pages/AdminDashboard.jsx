@@ -1,21 +1,53 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Users, MapPin, Phone, LogOut, Trash2,
-  RefreshCw, Calendar, Search, Download, Eye, EyeOff
+  RefreshCw, Calendar, Search, Download, Eye, EyeOff, ArrowLeft, Edit2,
+  AlertTriangle
 } from 'lucide-react';
 import { API_URL } from '../config';
+
+/* ─── Confirm Dialog Component ─── */
+function ConfirmDialog({ open, title, message, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div className="confirm-overlay" onClick={onCancel}>
+      <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="confirm-dialog-header">
+          <div className="confirm-dialog-icon">
+            <AlertTriangle size={24} />
+          </div>
+          <div className="confirm-dialog-text">
+            <div className="confirm-dialog-title">{title}</div>
+            <div className="confirm-dialog-message">{message}</div>
+          </div>
+        </div>
+        <div className="confirm-dialog-actions">
+          <button className="btn btn-cancel" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-confirm-danger" onClick={onConfirm}>Yes, Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('brokers');
   const [brokers, setBrokers] = useState([]);
+  const [statesData, setStatesData] = useState([]);
   const [citiesData, setCitiesData] = useState([]);
-  const [newCityName, setNewCityName] = useState('');
+  const [newStateName, setNewStateName] = useState('');
+  const [newCityNames, setNewCityNames] = useState({});
+  const [editingStateId, setEditingStateId] = useState(null);
+  const [editingName, setEditingName] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCity, setFilterCity] = useState('');
   const navigate = useNavigate();
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
 
   const token = localStorage.getItem('admin_token');
 
@@ -30,7 +62,7 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      await Promise.all([fetchBrokers(), fetchCities()]);
+      await Promise.all([fetchBrokers(), fetchAdminStates(), fetchAdminCities()]);
     } finally {
       setLoading(false);
     }
@@ -53,80 +85,249 @@ export default function AdminDashboard() {
     }
   };
 
-  const fetchCities = async () => {
+  const fetchAdminStates = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/cities`);
-      if (res.ok) {
-        const data = await res.json();
-        setCitiesData(data);
-      }
-    } catch (err) {
-      console.error('Fetch cities error:', err);
-    }
+      const res = await fetch(`${API_URL}/api/admin/states`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setStatesData(await res.json());
+    } catch (err) { console.error(err); }
   };
 
-  const addCity = async (e) => {
-    e.preventDefault();
-    if (!newCityName.trim()) return;
+  const fetchAdminCities = async () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/cities`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setCitiesData(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  /* ─── Optimistic CRUD ─── */
+
+  const addState = async (e) => {
+    e.preventDefault();
+    const name = newStateName.trim();
+    if (!name) return;
+
+    // Optimistic: add temp state immediately
+    const tempId = `temp-${Date.now()}`;
+    const tempState = { id: tempId, name, is_active: 1 };
+    setStatesData(prev => [...prev, tempState]);
+    setNewStateName('');
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/states`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ name: newCityName.trim() })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name })
       });
       if (res.ok) {
-        setNewCityName('');
-        fetchCities();
+        const created = await res.json();
+        // Replace temp with real data
+        setStatesData(prev => prev.map(s => s.id === tempId ? { ...s, id: created.id ?? created.insertId ?? tempId, ...created } : s));
+        // Refetch to ensure consistency
+        fetchAdminStates();
       } else {
-        alert('Failed to add city (might already exist)');
+        // Rollback
+        setStatesData(prev => prev.filter(s => s.id !== tempId));
       }
     } catch (err) {
       console.error(err);
+      setStatesData(prev => prev.filter(s => s.id !== tempId));
     }
   };
 
-  const deleteCity = async (id) => {
-    if (!window.confirm('Delete this city?')) return;
+  const addCity = async (e, stateId) => {
+    e.preventDefault();
+    const cityName = newCityNames[stateId]?.trim();
+    if (!cityName) return;
+
+    // Optimistic
+    const tempId = `temp-${Date.now()}`;
+    const tempCity = { id: tempId, name: cityName, state_id: stateId, is_active: 1 };
+    setCitiesData(prev => [...prev, tempCity]);
+    setNewCityNames(prev => ({ ...prev, [stateId]: '' }));
+
     try {
-      await fetch(`${API_URL}/api/admin/cities/${id}`, {
+      const res = await fetch(`${API_URL}/api/admin/cities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: cityName, state_id: stateId })
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setCitiesData(prev => prev.map(c => c.id === tempId ? { ...c, id: created.id ?? created.insertId ?? tempId, ...created } : c));
+        fetchAdminCities();
+      } else {
+        setCitiesData(prev => prev.filter(c => c.id !== tempId));
+      }
+    } catch (err) {
+      console.error(err);
+      setCitiesData(prev => prev.filter(c => c.id !== tempId));
+    }
+  };
+
+  const toggleState = async (id) => {
+    // Optimistic toggle
+    setStatesData(prev => prev.map(s => s.id === id ? { ...s, is_active: s.is_active ? 0 : 1 } : s));
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/states/${id}/toggle`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        // Rollback
+        setStatesData(prev => prev.map(s => s.id === id ? { ...s, is_active: s.is_active ? 0 : 1 } : s));
+      }
+    } catch (err) {
+      console.error(err);
+      setStatesData(prev => prev.map(s => s.id === id ? { ...s, is_active: s.is_active ? 0 : 1 } : s));
+    }
+  };
+
+  const saveStateName = async (id) => {
+    const trimmed = editingName.trim();
+    if (!trimmed) return;
+
+    const oldName = statesData.find(s => s.id === id)?.name;
+    // Optimistic
+    setStatesData(prev => prev.map(s => s.id === id ? { ...s, name: trimmed } : s));
+    setEditingStateId(null);
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/states/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: trimmed })
+      });
+      if (!res.ok) {
+        setStatesData(prev => prev.map(s => s.id === id ? { ...s, name: oldName } : s));
+      }
+    } catch (err) {
+      console.error(err);
+      setStatesData(prev => prev.map(s => s.id === id ? { ...s, name: oldName } : s));
+    }
+  };
+
+  const openDeleteStateDialog = (state) => {
+    const stateCities = citiesData.filter(c => c.state_id === state.id);
+    const cityCount = stateCities.length;
+    setConfirmDialog({
+      open: true,
+      title: `Delete "${state.name}"?`,
+      message: cityCount > 0
+        ? `This will permanently delete the state "${state.name}" and all ${cityCount} ${cityCount === 1 ? 'city' : 'cities'} under it. This action cannot be undone.`
+        : `This will permanently delete the state "${state.name}". This action cannot be undone.`,
+      onConfirm: () => {
+        setConfirmDialog({ open: false });
+        deleteState(state.id);
+      }
+    });
+  };
+
+  const deleteState = async (id) => {
+    // Optimistic
+    const removedState = statesData.find(s => s.id === id);
+    const removedCities = citiesData.filter(c => c.state_id === id);
+    setStatesData(prev => prev.filter(s => s.id !== id));
+    setCitiesData(prev => prev.filter(c => c.state_id !== id));
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/states/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
-      setCitiesData(citiesData.filter(c => c.id !== id));
+      if (!res.ok) {
+        // Rollback
+        setStatesData(prev => [...prev, removedState]);
+        setCitiesData(prev => [...prev, ...removedCities]);
+      }
     } catch (err) {
-      console.error('Delete error:', err);
+      console.error(err);
+      setStatesData(prev => [...prev, removedState]);
+      setCitiesData(prev => [...prev, ...removedCities]);
     }
   };
 
-  const toggleCity = async (id, isActive) => {
+  const toggleCity = async (id) => {
+    // Optimistic
+    setCitiesData(prev => prev.map(c => c.id === id ? { ...c, is_active: c.is_active ? 0 : 1 } : c));
+
     try {
       const res = await fetch(`${API_URL}/api/admin/cities/${id}/toggle`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.ok) {
-        setCitiesData(citiesData.map(c => 
-          c.id === id ? { ...c, is_active: !isActive } : c
-        ));
+      if (!res.ok) {
+        setCitiesData(prev => prev.map(c => c.id === id ? { ...c, is_active: c.is_active ? 0 : 1 } : c));
       }
     } catch (err) {
-      console.error('Toggle error:', err);
+      console.error(err);
+      setCitiesData(prev => prev.map(c => c.id === id ? { ...c, is_active: c.is_active ? 0 : 1 } : c));
     }
   };
 
-  const deleteBroker = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this broker?')) return;
+  const openDeleteCityDialog = (city) => {
+    setConfirmDialog({
+      open: true,
+      title: `Delete "${city.name}"?`,
+      message: `This will permanently remove the city "${city.name}" from the platform. This action cannot be undone.`,
+      onConfirm: () => {
+        setConfirmDialog({ open: false });
+        deleteCity(city.id);
+      }
+    });
+  };
+
+  const deleteCity = async (id) => {
+    // Optimistic
+    const removedCity = citiesData.find(c => c.id === id);
+    setCitiesData(prev => prev.filter(c => c.id !== id));
+
     try {
-      await fetch(`${API_URL}/api/admin/brokers/${id}`, {
+      const res = await fetch(`${API_URL}/api/admin/cities/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
-      setBrokers(brokers.filter(b => b.id !== id));
+      if (!res.ok) {
+        setCitiesData(prev => [...prev, removedCity]);
+      }
     } catch (err) {
       console.error('Delete error:', err);
+      setCitiesData(prev => [...prev, removedCity]);
+    }
+  };
+
+  const openDeleteBrokerDialog = (broker) => {
+    setConfirmDialog({
+      open: true,
+      title: `Delete broker "${broker.name}"?`,
+      message: `This will permanently remove ${broker.name}${broker.firm_name ? ` (${broker.firm_name})` : ''} from the platform. This action cannot be undone.`,
+      onConfirm: () => {
+        setConfirmDialog({ open: false });
+        deleteBroker(broker.id);
+      }
+    });
+  };
+
+  const deleteBroker = async (id) => {
+    // Optimistic
+    const removedBroker = brokers.find(b => b.id === id);
+    setBrokers(prev => prev.filter(b => b.id !== id));
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/brokers/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        setBrokers(prev => [...prev, removedBroker]);
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      setBrokers(prev => [...prev, removedBroker]);
     }
   };
 
@@ -136,9 +337,11 @@ export default function AdminDashboard() {
   };
 
   const filtered = brokers.filter(b => {
+    const searchLower = search.toLowerCase();
     const matchesSearch = 
-      b.name?.toLowerCase().includes(search.toLowerCase()) ||
-      b.broker_location?.toLowerCase().includes(search.toLowerCase()) ||
+      b.name?.toLowerCase().includes(searchLower) ||
+      b.firm_name?.toLowerCase().includes(searchLower) ||
+      b.broker_location?.toLowerCase().includes(searchLower) ||
       b.mobile?.includes(search);
     
     const matchesCity = filterCity === '' || b.broker_location === filterCity;
@@ -159,6 +362,15 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-dashboard">
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ open: false })}
+      />
+
       {/* Header */}
       <header className="admin-header">
         <div className="container flex items-center justify-between">
@@ -167,7 +379,11 @@ export default function AdminDashboard() {
             <span style={{ fontSize: 18, fontWeight: 800 }}>BrokrsHouse <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: 14 }}>Admin</span></span>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={fetchBrokers} className="btn btn-outline btn-sm" title="Refresh">
+            <Link to="/" className="btn btn-outline btn-sm" style={{ borderColor: 'transparent' }}>
+              <ArrowLeft size={15} /> Back to Site
+            </Link>
+            <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
+            <button onClick={fetchData} className="btn btn-outline btn-sm" title="Refresh">
               <RefreshCw size={15} /> Refresh
             </button>
             <button onClick={handleLogout} className="btn btn-sm" style={{ background: 'var(--danger-soft)', color: 'var(--danger)', border: 'none' }}>
@@ -305,12 +521,12 @@ export default function AdminDashboard() {
                     <tr>
                       <th>#</th>
                       <th>Broker Name</th>
+                      <th>Firm Name</th>
                       <th>Mobile</th>
                       <th>WhatsApp</th>
                       <th>Location</th>
                       <th>Covering Areas</th>
                       <th>Registered On</th>
-                      <th>Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -319,6 +535,7 @@ export default function AdminDashboard() {
                       <tr key={b.id}>
                         <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{i + 1}</td>
                         <td className="name-cell">{b.name}</td>
+                        <td style={{ fontSize: 13, fontWeight: 500 }}>{b.firm_name || '—'}</td>
                         <td>
                           <a href={`tel:${b.mobile}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>
                             {b.mobile}
@@ -340,19 +557,30 @@ export default function AdminDashboard() {
                             {b.broker_location}
                           </div>
                         </td>
-                        <td style={{ maxWidth: 200 }}>
-                          <span style={{
-                            display: '-webkit-box', WebkitLineClamp: 1,
-                            WebkitBoxOrient: 'vertical', overflow: 'hidden'
-                          }}>
-                            {b.covering_location}
-                          </span>
+                        <td style={{ maxWidth: 300 }}>
+                          <div className="flex flex-wrap gap-1">
+                            {(() => {
+                              try {
+                                const areas = JSON.parse(b.covering_location);
+                                return Array.isArray(areas) ? areas.map((area, idx) => (
+                                  <span key={idx} style={{ 
+                                    fontSize: 10, background: 'var(--primary-soft)', 
+                                    color: 'var(--primary)', padding: '2px 6px', 
+                                    borderRadius: 4, fontWeight: 600 
+                                  }}>
+                                    {area}
+                                  </span>
+                                )) : b.covering_location;
+                              } catch (e) {
+                                return b.covering_location;
+                              }
+                            })()}
+                          </div>
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>{formatDate(b.created_at)}</td>
-                        <td><span className="table-badge">Active</span></td>
                         <td>
                           <button
-                            onClick={() => deleteBroker(b.id)}
+                            onClick={() => openDeleteBrokerDialog(b)}
                             className="btn btn-sm btn-danger"
                             style={{ padding: '6px 12px' }}
                           >
@@ -370,7 +598,6 @@ export default function AdminDashboard() {
         </>
         )}
 
-        {/* CITIES TAB */}
         {activeTab === 'cities' && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -378,60 +605,125 @@ export default function AdminDashboard() {
             transition={{ delay: 0.1 }}
           >
             <div className="data-table-container" style={{ padding: 24 }}>
-              <div className="flex justify-between items-center" style={{ marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+              <div className="flex justify-between items-center" style={{ marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
                 <div>
-                  <h3 style={{ fontSize: 18, fontWeight: 700 }}>Managed Cities</h3>
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>These cities appear on the landing page.</p>
+                  <h3 style={{ fontSize: 24, fontWeight: 800 }}>Manage Locations</h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Add regions and cities to the network</p>
                 </div>
-                <form onSubmit={addCity} className="flex gap-2">
+                <form onSubmit={addState} className="flex gap-2">
                   <input 
                     type="text" 
                     className="form-input" 
-                    placeholder="E.g. Pune" 
-                    value={newCityName}
-                    onChange={(e) => setNewCityName(e.target.value)}
+                    placeholder="New State (e.g. Punjab)" 
+                    value={newStateName}
+                    onChange={(e) => setNewStateName(e.target.value)}
                     required
                   />
-                  <button type="submit" className="btn btn-primary">Add City</button>
+                  <button type="submit" className="btn btn-primary">Add State</button>
                 </form>
               </div>
 
-              {citiesData.length === 0 ? (
+              {statesData.length === 0 ? (
                 <div className="empty-state">
                   <MapPin size={48} />
-                  <p>No cities added yet.</p>
+                  <p>No regions added yet.</p>
                 </div>
               ) : (
-                <div className="grid grid-4 gap-4">
-                  {citiesData.map(c => (
-                    <div key={c.id} className="card flex justify-between items-center" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div className="flex items-center gap-2">
-                        <MapPin size={18} color="var(--primary)" />
-                        <span style={{ fontWeight: 600 }}>{c.name}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 12, background: c.is_active !== false ? 'var(--success-soft)' : 'var(--danger-soft)', color: c.is_active !== false ? 'var(--success)' : 'var(--danger)' }}>
-                          {c.is_active !== false ? 'Enabled' : 'Disabled'}
+                <div className="flex flex-col gap-8">
+                  {statesData.map(state => {
+                    const stateCities = citiesData.filter(c => c.state_id === state.id);
+                    return (
+                      <div key={state.id} className="state-card" style={{ background: 'var(--bg-pure)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+                        <div className="state-header" style={{ padding: '20px 24px', background: 'var(--bg-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+                          <div className="flex items-center gap-3">
+                            <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                              {state.name.charAt(0)}
+                            </div>
+                            <div className="flex flex-col">
+                              {editingStateId === state.id ? (
+                                <div className="flex items-center gap-2">
+                                  <input 
+                                    className="form-input" 
+                                    style={{ height: 32, fontSize: 13, width: 220 }}
+                                    value={editingName}
+                                    onChange={(e) => setEditingName(e.target.value)}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveStateName(state.id);
+                                      if (e.key === 'Escape') setEditingStateId(null);
+                                    }}
+                                  />
+                                  <button onClick={() => saveStateName(state.id)} className="btn btn-sm btn-primary" style={{ padding: '0 8px', height: 32 }}>Save</button>
+                                  <button onClick={() => setEditingStateId(null)} className="btn btn-sm btn-outline" style={{ padding: '0 8px', height: 32 }}>Cancel</button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <h4 style={{ fontSize: 16, fontWeight: 700 }}>{state.name}</h4>
+                                    <button 
+                                      onClick={() => { setEditingStateId(state.id); setEditingName(state.name); }} 
+                                      className="btn btn-ghost btn-sm" 
+                                      style={{ padding: 4, color: 'var(--text-muted)' }}
+                                      title="Rename State"
+                                    >
+                                      <Edit2 size={14} />
+                                    </button>
+                                  </div>
+                                  <span style={{ fontSize: 12, color: state.is_active ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                                    {state.is_active ? 'Active Region' : 'Hidden'}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <form onSubmit={(e) => addCity(e, state.id)} className="flex gap-2 mr-4">
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                style={{ height: 36, fontSize: 13, width: 180 }}
+                                placeholder="Add City (e.g. Ludhiana)" 
+                                value={newCityNames[state.id] || ''}
+                                onChange={(e) => setNewCityNames(prev => ({ ...prev, [state.id]: e.target.value }))}
+                                required
+                              />
+                              <button type="submit" className="btn btn-primary btn-sm" style={{ height: 36 }}>Add</button>
+                            </form>
+                            <button onClick={() => toggleState(state.id)} className="btn btn-sm btn-outline" style={{ height: 36 }}>
+                              {state.is_active ? <EyeOff size={15} /> : <Eye size={15} />}
+                            </button>
+                            <button onClick={() => openDeleteStateDialog(state)} className="btn btn-sm btn-outline" style={{ height: 36, color: 'var(--danger)' }}>
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
                         </div>
-                        <button 
-                          onClick={() => toggleCity(c.id, c.is_active !== false)}
-                          className="btn btn-sm btn-ghost" 
-                          style={{ color: 'var(--text-secondary)', padding: 6 }}
-                          title={c.is_active !== false ? "Disable" : "Enable"}
-                        >
-                          {c.is_active !== false ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                        <button 
-                          onClick={() => deleteCity(c.id)}
-                          className="btn btn-sm btn-ghost" 
-                          style={{ color: 'var(--danger)', padding: 6 }}
-                          title="Delete City"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="state-cities" style={{ padding: 20 }}>
+                          {stateCities.length === 0 ? (
+                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', textAlign: 'center', padding: 20 }}>No cities added to this region yet.</p>
+                          ) : (
+                            <div className="grid grid-3 gap-3">
+                              {stateCities.map(city => (
+                                <div key={city.id} className="flex items-center justify-between" style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: city.is_active ? 'transparent' : 'var(--bg-soft)', opacity: city.is_active ? 1 : 0.7 }}>
+                                  <div className="flex items-center gap-3">
+                                    <MapPin size={16} color={city.is_active ? 'var(--primary)' : 'var(--text-muted)'} />
+                                    <span style={{ fontSize: 14, fontWeight: 500 }}>{city.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button onClick={() => toggleCity(city.id)} className="btn btn-sm" style={{ padding: 4, background: 'transparent', border: 'none', color: 'var(--text-secondary)' }}>
+                                      {city.is_active ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                    <button onClick={() => openDeleteCityDialog(city)} className="btn btn-sm" style={{ padding: 4, background: 'transparent', border: 'none', color: 'var(--danger)' }}>
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

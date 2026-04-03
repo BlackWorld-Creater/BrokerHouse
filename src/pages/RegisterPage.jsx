@@ -1,32 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Phone, MessageSquare, MapPin, ArrowRight,
-  CheckCircle2, ArrowLeft, Shield, Globe, Users
+  CheckCircle2, ArrowLeft, Shield, Globe, Users, Plus, X
 } from 'lucide-react';
 import { API_URL } from '../config';
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: (i = 0) => ({
-    opacity: 1, y: 0,
-    transition: { duration: 0.6, delay: i * 0.1, ease: [0.25, 0.46, 0.45, 0.94] }
-  })
-};
-
 export default function RegisterPage() {
+  const [activeRegions, setActiveRegions] = useState([]);
   const [formData, setFormData] = useState({
-    name: '', mobile: '', whatsapp: '',
-    broker_location: '', state: '', covering_location: ''
+    name: '', firm_name: '', mobile: '', whatsapp: '',
+    broker_location: '', state: ''
   });
-  const [whatsappSame, setWhatsappSame] = useState(true);
+  const [coveringAreas, setCoveringAreas] = useState([{ state: '', city: '', cities: [] }]);
+  const [whatsappSame, setWhatsappSame] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const scrollContainerRef = useRef(null);
+
+  // Auto-scroll to bottom of covering areas when adding new one
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [coveringAreas.length]);
+
+  // Fetch active states from our server — auto-refresh on focus & every 30s
+  const fetchStates = () => {
+    fetch(`${API_URL}/api/states`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setActiveRegions(data);
+      })
+      .catch(err => console.error('Error fetching states:', err));
+  };
+
+  useEffect(() => {
+    fetchStates();
+
+    // Poll every 30 seconds for admin changes
+    const interval = setInterval(fetchStates, 30000);
+
+    // Refetch when user switches back to this tab
+    const onFocus = () => fetchStates();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (name === 'state') setFormData(prev => ({ ...prev, broker_location: '' }));
   };
 
   const handleMobileChange = (e) => {
@@ -35,23 +68,76 @@ export default function RegisterPage() {
   };
 
   const toggleWhatsappSame = () => {
-    setWhatsappSame(!whatsappSame);
-    if (!whatsappSame) {
+    const newVal = !whatsappSame;
+    setWhatsappSame(newVal);
+    if (newVal) {
       setFormData(prev => ({ ...prev, whatsapp: prev.mobile }));
     } else {
       setFormData(prev => ({ ...prev, whatsapp: '' }));
     }
   };
 
+  // Covering Areas Logic
+  const addCoveringArea = () => {
+    setCoveringAreas([...coveringAreas, { state: '', city: '', cities: [] }]);
+  };
+
+  const removeCoveringArea = (index) => {
+    setCoveringAreas(coveringAreas.filter((_, i) => i !== index));
+  };
+
+  const updateCoveringArea = async (index, field, value) => {
+    const updated = [...coveringAreas];
+    updated[index][field] = value;
+
+    if (field === 'state') {
+      updated[index].city = '';
+      if (value) {
+        try {
+          const res = await fetch(`${API_URL}/api/cities?state_id=${value}`);
+          const data = await res.json();
+          if (Array.isArray(data)) updated[index].cities = data;
+        } catch (err) {
+          console.error('Error fetching cities:', err);
+        }
+      } else {
+        updated[index].cities = [];
+      }
+    }
+    setCoveringAreas(updated);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.broker_location) {
+      setError('Please Enter your location');
+      return;
+    }
+    
+    // Validate covering areas
+    const validCovering = coveringAreas.filter(a => a.state && a.city);
+    if (validCovering.length === 0) {
+      setError('Please add at least one covering location');
+      return;
+    }
+
     setError('');
     setLoading(true);
+    
+    const submissionData = {
+      ...formData,
+      state: formData.state || '',
+      covering_location: JSON.stringify(validCovering.map(a => {
+        const stateName = activeRegions.find(r => r.id.toString() === a.state)?.name || a.state;
+        return `${a.city}, ${stateName}`;
+      }))
+    };
+
     try {
       const res = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(submissionData)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
@@ -80,13 +166,13 @@ export default function RegisterPage() {
         >
           {/* Sidebar */}
           <div className="register-sidebar">
-            <div>
+            <div className="sidebar-content">
               <div className="flex items-center gap-2" style={{ marginBottom: 32 }}>
                 <Building2 size={28} />
                 <span style={{ fontSize: 20, fontWeight: 800 }}>BrokrsHouse</span>
               </div>
               <h2>Join India's Premier Broker Network</h2>
-              <p>Register today and get instant access to premium listings, verified buyers, and powerful portfolio tools.</p>
+              <p>Register today and get instant access to premium listings and verified buyers.</p>
               <ul className="register-features">
                 {[
                   { icon: <Shield size={16} />, text: 'Verified Professional Badge' },
@@ -101,7 +187,7 @@ export default function RegisterPage() {
                 ))}
               </ul>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.5, marginTop: 40 }}>
+            <div className="sidebar-footer" style={{ fontSize: 12, opacity: 0.5 }}>
               By registering, you agree to our Terms of Service and Privacy Policy.
             </div>
           </div>
@@ -110,23 +196,12 @@ export default function RegisterPage() {
           <div className="register-form-area">
             <AnimatePresence mode="wait">
               {!success ? (
-                <motion.div
-                  key="form"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, x: -30 }}
-                >
+                <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, x: -30 }}>
                   <h3 style={{ fontSize: 24, fontWeight: 800, marginBottom: 6 }}>Broker Registration</h3>
-                  <p style={{ fontSize: 15, color: 'var(--text-muted)', marginBottom: 32 }}>
-                    Fill in your professional details below to get started.
-                  </p>
+                  <p style={{ fontSize: 15, color: 'var(--text-muted)', marginBottom: 32 }}>Professional details below.</p>
 
                   {error && (
-                    <div style={{
-                      background: 'var(--danger-soft)', color: 'var(--danger)',
-                      padding: '12px 16px', borderRadius: 'var(--radius-sm)',
-                      fontSize: 14, fontWeight: 600, marginBottom: 20
-                    }}>
+                    <div style={{ background: 'var(--danger-soft)', color: 'var(--danger)', padding: '12px 16px', borderRadius: '8px', fontSize: 14, fontWeight: 600, marginBottom: 20 }}>
                       {error}
                     </div>
                   )}
@@ -136,36 +211,26 @@ export default function RegisterPage() {
                       <div className="grid grid-2 gap-6">
                         <div className="form-group">
                           <label className="form-label">Full Name *</label>
-                          <input
-                            name="name" required className="form-input"
-                            placeholder="Enter your full name"
-                            value={formData.name} onChange={handleChange}
-                          />
+                          <input name="name" required className="form-input" placeholder="Broker Full Name" value={formData.name} onChange={handleChange} />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Firm Name (Optional)</label>
+                          <input name="firm_name" className="form-input" placeholder="Real Estate Agency Name" value={formData.firm_name} onChange={handleChange} />
                         </div>
                       </div>
 
-                      <div className="grid grid-2 gap-6">
-                        <div className="form-group">
-                          <label className="form-label">State *</label>
-                          <div className="form-input-icon">
-                            <MapPin size={16} />
-                            <input
-                              name="state" required className="form-input"
-                              placeholder="e.g. Maharashtra"
-                              value={formData.state} onChange={handleChange}
-                            />
-                          </div>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label">City / Broker Location *</label>
-                          <div className="form-input-icon">
-                            <MapPin size={16} />
-                            <input
-                              name="broker_location" required className="form-input"
-                              placeholder="City, Area"
-                              value={formData.broker_location} onChange={handleChange}
-                            />
-                          </div>
+                      <div className="form-group">
+                        <label className="form-label">Broker Location *</label>
+                        <div className="form-input-icon">
+                          <MapPin size={16} />
+                          <input 
+                            name="broker_location" 
+                            required 
+                            className="form-input" 
+                            placeholder="E.g. Noida Extension, Greater Noida West or Gurgaon Sector 54"
+                            value={formData.broker_location} 
+                            onChange={handleChange}
+                          />
                         </div>
                       </div>
 
@@ -174,45 +239,60 @@ export default function RegisterPage() {
                           <label className="form-label">Mobile Number *</label>
                           <div className="form-input-icon">
                             <Phone size={16} />
-                            <input
-                              name="mobile" required className="form-input"
-                              placeholder="+91 98765 43210"
-                              value={formData.mobile} onChange={handleMobileChange}
-                            />
+                            <input name="mobile" required className="form-input" placeholder="+91 98765 43210" value={formData.mobile} onChange={handleMobileChange} />
                           </div>
                         </div>
-                        
                         {!whatsappSame && (
                           <div className="form-group">
                             <label className="form-label">WhatsApp Number *</label>
                             <div className="form-input-icon">
                               <MessageSquare size={16} />
-                              <input
-                                name="whatsapp" required className="form-input"
-                                placeholder="+91 98765 43210"
-                                value={formData.whatsapp} onChange={handleChange}
-                              />
+                              <input name="whatsapp" required className="form-input" placeholder="+91 98765 43210" value={formData.whatsapp} onChange={handleChange} />
                             </div>
                           </div>
                         )}
                       </div>
 
-                      <div className="form-group" style={{ marginTop: -16, marginBottom: 8 }}>
+                      <div className="form-group" style={{ marginTop: -16 }}>
                         <label className="flex items-center gap-2" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
                           <input type="checkbox" checked={whatsappSame} onChange={toggleWhatsappSame} style={{ accentColor: 'var(--primary)', width: 14, height: 14 }} />
                           WhatsApp number is same as Mobile
                         </label>
                       </div>
 
+                      {/* MULTI-LOCATION COVERING AREAS */}
                       <div className="form-group">
-                        <label className="form-label">Covering Locations *</label>
-                        <div className="form-input-icon">
-                          <Globe size={16} />
-                          <input
-                            name="covering_location" required className="form-input"
-                            placeholder="Mumbai, Thane, Navi Mumbai..."
-                            value={formData.covering_location} onChange={handleChange}
-                          />
+                        <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          Covering Locations *
+                          <button type="button" onClick={addCoveringArea} className="btn btn-sm btn-ghost" style={{ padding: 0, color: 'var(--primary)', fontSize: 12 }}>
+                            <Plus size={14} /> Add More
+                          </button>
+                        </label>
+                        <div ref={scrollContainerRef} className="flex flex-col gap-3 custom-scrollbar" style={{ maxHeight: '110px', overflowY: 'auto', paddingRight: '8px', marginBottom: '8px' }}>
+                          {coveringAreas.map((area, index) => (
+                            <div key={index} className="flex gap-2 items-start">
+                              <select 
+                                className="form-input" style={{ flex: 1, padding: '10px 14px', fontSize: 13 }}
+                                value={area.state} onChange={(e) => updateCoveringArea(index, 'state', e.target.value)}
+                              >
+                                <option value="">State</option>
+                                {activeRegions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                              </select>
+                              <select 
+                                className="form-input" style={{ flex: 1, padding: '10px 14px', fontSize: 13 }}
+                                value={area.city} onChange={(e) => updateCoveringArea(index, 'city', e.target.value)}
+                                disabled={!area.state}
+                              >
+                                <option value="">{area.state ? 'Select City' : 'Please select state first'}</option>
+                                {area.cities.map((city, idx) => <option key={idx} value={city.name}>{city.name}</option>)}
+                              </select>
+                              {coveringAreas.length > 1 && (
+                                <button type="button" onClick={() => removeCoveringArea(index)} style={{ padding: 12, color: 'var(--danger)' }}>
+                                  <X size={16} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       </div>
 
@@ -223,29 +303,13 @@ export default function RegisterPage() {
                   </form>
                 </motion.div>
               ) : (
-                <motion.div
-                  key="success"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="success-card"
-                >
-                  <div className="success-icon">
-                    <CheckCircle2 size={40} />
-                  </div>
+                <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="success-card">
+                  <div className="success-icon"><CheckCircle2 size={40} /></div>
                   <h3 style={{ fontSize: 28, fontWeight: 800, marginBottom: 12 }}>Registration Successful!</h3>
-                  <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.7 }}>
-                    Welcome aboard, <strong>{formData.name}</strong>! Your broker profile has been submitted successfully.
-                  </p>
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 32 }}>
-                    Our team will review your details and contact you within 24 hours.
-                  </p>
+                  <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginBottom: 32 }}>Welcome onboard!</p>
                   <div className="flex gap-4 justify-center">
-                    <button onClick={() => { setSuccess(false); setFormData({ name: '', mobile: '', whatsapp: '', broker_location: '', state: '', covering_location: '' }); }} className="btn btn-outline">
-                      Register Another
-                    </button>
-                    <Link to="/" className="btn btn-primary">
-                      Back to Home <ArrowRight size={16} />
-                    </Link>
+                    <button onClick={() => { setSuccess(false); setFormData({ name: '', firm_name: '', mobile: '', whatsapp: '', broker_location: '' }); setCoveringAreas([{ state: '', city: '', cities: [] }]); }} className="btn btn-outline">Register Another</button>
+                    <Link to="/" className="btn btn-primary">Back to Home <ArrowRight size={16} /></Link>
                   </div>
                 </motion.div>
               )}

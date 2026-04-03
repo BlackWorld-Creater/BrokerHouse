@@ -32,6 +32,7 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS "BrokrsHouse" (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
+        firm_name VARCHAR(255) DEFAULT '',
         mobile VARCHAR(50) NOT NULL,
         whatsapp VARCHAR(50) NOT NULL,
         broker_location VARCHAR(255) NOT NULL,
@@ -41,13 +42,16 @@ async function initDB() {
       )
     `);
     
-    // Add state column safely
+    // Add columns safely
     try {
       await pool.query(`ALTER TABLE "BrokrsHouse" ADD COLUMN state VARCHAR(255) NOT NULL DEFAULT ''`);
     } catch(e) {}
+    try {
+      await pool.query(`ALTER TABLE "BrokrsHouse" ADD COLUMN firm_name VARCHAR(255) DEFAULT ''`);
+    } catch(e) {}
 
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS "Cities" (
+      CREATE TABLE IF NOT EXISTS "States" (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) UNIQUE NOT NULL,
         is_active BOOLEAN DEFAULT true,
@@ -55,19 +59,53 @@ async function initDB() {
       )
     `);
 
-    // Add is_active column safely to existing tables
-    try {
-      await pool.query(`ALTER TABLE "Cities" ADD COLUMN is_active BOOLEAN DEFAULT true`);
-    } catch(e) {}
-
-    // Insert default cities if table is newly created
     await pool.query(`
-      INSERT INTO "Cities" (name) 
-      VALUES ('NCR'), ('Gurugram') 
-      ON CONFLICT (name) DO NOTHING
+      CREATE TABLE IF NOT EXISTS "Cities" (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) UNIQUE NOT NULL,
+        state_id INTEGER REFERENCES "States"(id) ON DELETE CASCADE,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
     `);
 
-    console.log('✅ Database table verified/created');
+    // Ensure the state_id column exists and has proper cascading delete
+    try {
+      // Drop any existing constraint variations to avoid conflicts
+      await pool.query(`ALTER TABLE "Cities" DROP CONSTRAINT IF EXISTS cities_state_id_fkey`);
+      await pool.query(`ALTER TABLE "Cities" DROP CONSTRAINT IF EXISTS "Cities_state_id_fkey"`);
+      await pool.query(`ALTER TABLE "Cities" ADD CONSTRAINT cities_state_id_fkey FOREIGN KEY (state_id) REFERENCES "States"(id) ON DELETE CASCADE`);
+    } catch(e) {
+      console.error('Constraint update error:', e.message);
+    }
+
+    // Map Cities to States
+    const states = ['Delhi (NCR)', 'Haryana', 'Uttar Pradesh', 'Rajasthan'];
+    for (const stateName of states) {
+      await pool.query(`INSERT INTO "States" (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`, [stateName]);
+    }
+
+    // Map Cities to States
+    const stateMapping = {
+      'Delhi (NCR)': ['Delhi', 'New Delhi', 'Okhla', 'Rohini', 'Dwarka'],
+      'Haryana': ['Gurugram', 'Faridabad', 'Sonipat', 'Panipat', 'Ambala', 'Panchkula', 'Rohtak', 'Karnal'],
+      'Uttar Pradesh': ['Noida', 'Greater Noida', 'Ghaziabad', 'Meerut', 'Agra', 'Lucknow', 'Kanpur', 'Varanasi', 'Prayagraj'],
+      'Rajasthan': ['Jaipur', 'Alwar', 'Bhiwadi', 'Jodhpur', 'Udaipur', 'Kota', 'Ajmer', 'Bikaner']
+    };
+
+    for (const [stateName, citiesList] of Object.entries(stateMapping)) {
+      const stateRes = await pool.query(`SELECT id FROM "States" WHERE name = $1`, [stateName]);
+      const stateId = stateRes.rows[0].id;
+      for (const cityName of citiesList) {
+        await pool.query(`
+          INSERT INTO "Cities" (name, state_id) 
+          VALUES ($1, $2) 
+          ON CONFLICT (name) DO UPDATE SET state_id = $2
+        `, [cityName, stateId]);
+      }
+    }
+
+    console.log('✅ Database schema verified and data seeded');
   } catch (err) {
     console.error('❌ DB init error:', err.message);
   }
@@ -79,17 +117,17 @@ const ADMIN_PASSWORD = 'Pass@123';
 
 // POST /api/register — Broker registration
 app.post('/api/register', async (req, res) => {
-  const { name, mobile, whatsapp, broker_location, state, covering_location } = req.body;
+  const { name, firm_name, mobile, whatsapp, broker_location, state, covering_location } = req.body;
 
-  if (!name || !mobile || !whatsapp || !broker_location || !state || !covering_location) {
+  if (!name || !mobile || !whatsapp || !broker_location || !covering_location) {
     return res.status(400).json({ error: 'All fields are required' });
   }
 
   try {
     const result = await pool.query(
-      `INSERT INTO "BrokrsHouse" (name, mobile, whatsapp, broker_location, state, covering_location) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [name, mobile, whatsapp, broker_location, state, covering_location]
+      `INSERT INTO "BrokrsHouse" (name, firm_name, mobile, whatsapp, broker_location, state, covering_location) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [name, firm_name || '', mobile, whatsapp, broker_location, state, covering_location]
     );
     res.status(201).json({ message: 'Registration successful', broker: result.rows[0] });
   } catch (err) {
@@ -109,9 +147,9 @@ app.post('/api/admin/login', (req, res) => {
 });
 
 // Auth middleware
-function authMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+const authMiddleware = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) return res.status(401).json({ error: 'No token' });
   const token = authHeader.split(' ')[1];
   try {
     jwt.verify(token, process.env.JWT_SECRET);
@@ -143,45 +181,125 @@ app.delete('/api/admin/brokers/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/cities — Get all active cities (public)
-app.get('/api/cities', async (req, res) => {
+// GET /api/states — Get all active states (public)
+app.get('/api/states', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM "Cities" ORDER BY name ASC');
+    const result = await pool.query('SELECT * FROM "States" WHERE is_active = true ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error fetching states' });
+  }
+});
+
+// GET /api/cities — Get cities (optionally filtered by state)
+app.get('/api/cities', async (req, res) => {
+  const { state_id } = req.query;
+  try {
+    let query = 'SELECT * FROM "Cities" WHERE is_active = true';
+    let params = [];
+    
+    if (state_id) {
+      query += ' AND state_id = $1';
+      params.push(state_id);
+    }
+    
+    query += ' ORDER BY name ASC';
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Server error fetching cities' });
   }
 });
 
-// POST /api/admin/cities — Add new city (protected)
-app.post('/api/admin/cities', authMiddleware, async (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'City name required' });
+// ADMIN STATES & CITIES CRUD
+app.get('/api/admin/states', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query('INSERT INTO "Cities" (name) VALUES ($1) RETURNING *', [name]);
-    res.json(result.rows[0]);
+    const result = await pool.query('SELECT * FROM "States" ORDER BY name ASC');
+    res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: 'Error adding city. It might already exist.' });
+    res.status(500).json({ error: 'Error fetching admin states' });
   }
 });
 
-// PUT /api/admin/cities/:id/toggle — Toggle city active status
+app.post('/api/admin/states', authMiddleware, async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'State name required' });
+  try {
+    const result = await pool.query('INSERT INTO "States" (name) VALUES ($1) RETURNING *', [name]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Error adding state' });
+  }
+});
+
+// Update state name
+app.put('/api/admin/states/:id', authMiddleware, async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  try {
+    const result = await pool.query('UPDATE "States" SET name = $1 WHERE id = $2 RETURNING *', [name, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Error updating state' });
+  }
+});
+
+app.put('/api/admin/states/:id/toggle', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query('UPDATE "States" SET is_active = NOT is_active WHERE id = $1 RETURNING *', [req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Error toggling state' });
+  }
+});
+
+app.delete('/api/admin/states/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Explicitly delete cities first to ensure reliable cascading even if DB constraints differ
+    await pool.query('DELETE FROM "Cities" WHERE state_id = $1', [id]);
+    const result = await pool.query('DELETE FROM "States" WHERE id = $1', [id]);
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'State not found' });
+    }
+    
+    res.json({ message: 'State and its cities deleted successfully' });
+  } catch (err) {
+    console.error('State delete error:', err.message);
+    res.status(500).json({ error: 'Error deleting state' });
+  }
+});
+
+app.get('/api/admin/cities', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM "Cities" ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Error fetching admin cities' });
+  }
+});
+
+app.post('/api/admin/cities', authMiddleware, async (req, res) => {
+  const { name, state_id } = req.body;
+  if (!name || !state_id) return res.status(400).json({ error: 'Name and state_id required' });
+  try {
+    const result = await pool.query('INSERT INTO "Cities" (name, state_id) VALUES ($1, $2) RETURNING *', [name, state_id]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Error adding city' });
+  }
+});
+
 app.put('/api/admin/cities/:id/toggle', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(
-      `UPDATE "Cities" SET is_active = NOT COALESCE(is_active, true) 
-       WHERE id = $1 RETURNING *`,
-      [req.params.id]
-    );
-    if (result.rowCount === 0) return res.status(404).json({ error: 'City not found' });
+    const result = await pool.query('UPDATE "Cities" SET is_active = NOT is_active WHERE id = $1 RETURNING *', [req.params.id]);
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Toggle city error:', err.message);
-    res.status(500).json({ error: 'Server error toggling city' });
+    res.status(500).json({ error: 'Error toggling city' });
   }
 });
 
-// DELETE /api/admin/cities/:id — Delete city (protected)
 app.delete('/api/admin/cities/:id', authMiddleware, async (req, res) => {
   try {
     await pool.query('DELETE FROM "Cities" WHERE id = $1', [req.params.id]);
