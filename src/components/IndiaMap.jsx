@@ -9,8 +9,10 @@ import {
 import { motion, useInView } from 'framer-motion';
 import { MapPin, Info } from 'lucide-react';
 
-// Local simplified GeoJSON — India states (served from /public)
-const INDIA_TOPO_URL = '/india-states-simple.geojson';
+// India states/UT GeoJSON (`/public`): Natural Earth 10m for all units; **Jammu & Kashmir** and **Ladakh**
+// geometries come from merged Census/LGD-style districts (udit-001/india-maps-data) so the northern
+// outline matches common Indian reference maps better than NE alone. `?v=` busts cache.
+const INDIA_TOPO_URL = '/india-states-simple.geojson?v=udit-jk-2026-02';
 
 // Map admin state names → GeoJSON NAME_1 field
 const STATE_NAME_MAP = {
@@ -22,7 +24,8 @@ const STATE_NAME_MAP = {
   'Rajasthan': 'Rajasthan',
   'Punjab': 'Punjab',
   'Himachal Pradesh': 'Himachal Pradesh',
-  'Uttarakhand': 'Uttaranchal',
+  'Uttarakhand': 'Uttarakhand',
+  'Uttaranchal': 'Uttarakhand',
   'Madhya Pradesh': 'Madhya Pradesh',
   'Gujarat': 'Gujarat',
   'Maharashtra': 'Maharashtra',
@@ -31,15 +34,17 @@ const STATE_NAME_MAP = {
   'Kerala': 'Kerala',
   'Tamil Nadu': 'Tamil Nadu',
   'Andhra Pradesh': 'Andhra Pradesh',
-  'Telangana': 'Andhra Pradesh',
+  'Telangana': 'Telangana',
   'Bihar': 'Bihar',
   'Jharkhand': 'Jharkhand',
   'West Bengal': 'West Bengal',
-  'Odisha': 'Orissa',
+  'Odisha': 'Odisha',
+  'Orissa': 'Odisha',
   'Chhattisgarh': 'Chhattisgarh',
   'Assam': 'Assam',
   'Jammu & Kashmir': 'Jammu and Kashmir',
   'Jammu and Kashmir': 'Jammu and Kashmir',
+  'Ladakh': 'Ladakh',
   'Meghalaya': 'Meghalaya',
   'Tripura': 'Tripura',
   'Manipur': 'Manipur',
@@ -48,6 +53,9 @@ const STATE_NAME_MAP = {
   'Arunachal Pradesh': 'Arunachal Pradesh',
   'Sikkim': 'Sikkim',
   'Chandigarh': 'Chandigarh',
+  'Dadra and Nagar Haveli': 'Dadra and Nagar Haveli and Daman and Diu',
+  'Daman and Diu': 'Dadra and Nagar Haveli and Daman and Diu',
+  'Dadra and Nagar Haveli and Daman and Diu': 'Dadra and Nagar Haveli and Daman and Diu',
 };
 
 // Geographic centroids for location pin placement (Quick lookup for common states)
@@ -58,6 +66,7 @@ const STATE_CENTROIDS = {
   'Rajasthan': [74.2179, 27.0238],
   'Punjab': [75.3412, 31.1471],
   'Himachal Pradesh': [77.1734, 31.1048],
+  'Uttarakhand': [79.0193, 30.0668],
   'Uttaranchal': [79.0193, 30.0668],
   'Madhya Pradesh': [78.6569, 22.9734],
   'Gujarat': [71.1924, 22.2587],
@@ -70,10 +79,12 @@ const STATE_CENTROIDS = {
   'Bihar': [85.3131, 25.0961],
   'Jharkhand': [85.2799, 23.6102],
   'West Bengal': [87.8550, 22.9868],
+  'Odisha': [85.0985, 20.9517],
   'Orissa': [85.0985, 20.9517],
   'Chhattisgarh': [81.8661, 21.2787],
   'Assam': [92.9376, 26.2006],
   'Jammu and Kashmir': [76.9182, 33.7782],
+  'Ladakh': [77.5774, 34.1526],
   'Meghalaya': [91.3662, 25.4670],
   'Tripura': [91.9882, 23.9408],
   'Manipur': [93.9063, 24.6637],
@@ -97,6 +108,7 @@ const STATE_COLORS = [
 const TEXT_LABEL_OFFSETS = {
   'Delhi': { x: 12, y: 18 },
   'Haryana': { x: -18, y: 14 },
+  'Uttarakhand': { x: 10, y: 14 },
   'Uttaranchal': { x: 10, y: 14 },
 };
 
@@ -140,6 +152,7 @@ export default function IndiaMap({ states = [], cities = [], onStateClick }) {
   
   // Animation management
   const containerRef = useRef(null);
+  const didAutoFitRef = useRef(false);
   const isInView = useInView(containerRef, { once: true, margin: "-100px" });
   
   // Projection state for "Auto Zoom"
@@ -163,22 +176,32 @@ export default function IndiaMap({ states = [], cities = [], onStateClick }) {
       .map(f => f?.properties?.NAME_1)
       .filter(Boolean);
 
-    const normalizeName = (v) =>
-      String(v)
+    const normalizeName = (v, { compact = false } = {}) => {
+      const normalized = String(v)
         .toLowerCase()
         .trim()
         .replace(/&/g, 'and')
         .replace(/[\(\)]/g, '')
         .replace(/[^a-z0-9 ]/g, ' ')
-        .replace(/\s+/g, ' ');
+        .replace(/\s+/g, ' ')
+        .trim();
+      return compact ? normalized.replace(/\s+/g, '') : normalized;
+    };
 
-    const geoByNormalized = new Map(geoNames.map(n => [normalizeName(n), n]));
+    // Some datasets (e.g. certain GADM exports) omit spaces in NAME_1 (e.g. "AndamanandNicobar").
+    // Index both spaced + compact keys so we can match admin names reliably.
+    const geoByNormalized = new Map();
+    geoNames.forEach((n) => {
+      geoByNormalized.set(normalizeName(n), n);
+      geoByNormalized.set(normalizeName(n, { compact: true }), n);
+    });
     
     states.forEach((s, idx) => {
       const adminName = (s?.name ?? '').toString().trim();
       if (!adminName) return;
 
       const adminNorm = normalizeName(adminName);
+      const adminNormCompact = normalizeName(adminName, { compact: true });
 
       let geoName = null;
 
@@ -192,18 +215,17 @@ export default function IndiaMap({ states = [], cities = [], onStateClick }) {
       if (!geoName) {
         if (adminNorm.includes('delhi')) geoName = 'Delhi';
         else if (adminNorm === 'uttaranchal' || adminNorm.includes('khand') || adminNorm.includes('uttrak')) {
-          // GeoJSON in `india-states-simple.geojson` uses `Uttaranchal` (not `Uttarakhand`).
-          const uttaranchalGeo = geoNames.find(g => normalizeName(g).replace(/\s+/g, '') === 'uttaranchal');
-          const uttGeo = geoNames.find(g => normalizeName(g).replace(/\s+/g, '') === 'uttarakhand');
-          geoName = uttaranchalGeo || uttGeo || 'Uttaranchal';
+          const uttGeo = geoNames.find(g => normalizeName(g, { compact: true }) === 'uttarakhand');
+          const uttaranchalGeo = geoNames.find(g => normalizeName(g, { compact: true }) === 'uttaranchal');
+          geoName = uttGeo || uttaranchalGeo || 'Uttarakhand';
         } else if (adminNorm === 'odisha' || adminNorm === 'orissa') {
-          geoName = geoNames.includes('Odisha') ? 'Odisha' : 'Orissa';
+          geoName = geoNames.includes('Odisha') ? 'Odisha' : (geoNames.includes('Orissa') ? 'Orissa' : 'Odisha');
         } else if (adminNorm === 'west bengal') {
           geoName = 'West Bengal';
         } else if (adminNorm === 'telangana') {
           geoName = geoNames.includes('Telangana') ? 'Telangana' : 'Andhra Pradesh';
         } else {
-          geoName = geoByNormalized.get(adminNorm) || null;
+          geoName = geoByNormalized.get(adminNorm) || geoByNormalized.get(adminNormCompact) || null;
         }
       }
 
@@ -211,7 +233,9 @@ export default function IndiaMap({ states = [], cities = [], onStateClick }) {
       if (!geoName) {
         geoName = geoNames.find(g => {
           const gNorm = normalizeName(g);
-          return gNorm === adminNorm || gNorm.includes(adminNorm) || adminNorm.includes(gNorm);
+          if (gNorm === adminNorm || gNorm.includes(adminNorm) || adminNorm.includes(gNorm)) return true;
+          const gCompact = normalizeName(g, { compact: true });
+          return gCompact === adminNormCompact || gCompact.includes(adminNormCompact) || adminNormCompact.includes(gCompact);
         }) || null;
       }
       
@@ -219,7 +243,7 @@ export default function IndiaMap({ states = [], cities = [], onStateClick }) {
       if (!geoName) return;
 
       // Attempt to find the geographic feature for this state to calculate its center
-      const feature = geoData.features.find(f => f.properties.NAME_1 === geoName);
+      const feature = geoData.features.find(f => normalizeName(f?.properties?.NAME_1, { compact: true }) === normalizeName(geoName, { compact: true }));
       let centroid = STATE_CENTROIDS[geoName];
       
       // Dynamic Fallback: If we don't have a hardcoded center, calculate it from the GeoJSON
@@ -241,34 +265,61 @@ export default function IndiaMap({ states = [], cities = [], onStateClick }) {
 
   // Calculate focal point and zoom level when coming into view or when states change
   useEffect(() => {
-    if (isInView && states.length > 0 && Object.keys(stateInfoMap).length > 0) {
-      const activeCentroids = Object.values(stateInfoMap)
-        .map(i => i.centroid)
-        .filter(Boolean);
-      
-      if (activeCentroids.length > 0) {
-        const minLon = Math.min(...activeCentroids.map(c => c[0]));
-        const maxLon = Math.max(...activeCentroids.map(c => c[0]));
-        const minLat = Math.min(...activeCentroids.map(c => c[1]));
-        const maxLat = Math.max(...activeCentroids.map(c => c[1]));
+    if (!isInView || !geoData || didAutoFitRef.current) return;
+    if (!Array.isArray(geoData.features) || geoData.features.length === 0) return;
 
-        // Center the map on the bounding box midpoint so new distant states (e.g. Karnataka)
-        // are always brought into view, not just averaged into the existing cluster.
-        const centerLon = (minLon + maxLon) / 2;
-        const centerLat = (minLat + maxLat) / 2;
+    // Fit the whole GeoJSON extent so every state boundary is visible (not just the "active" ones).
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
 
-        // Dynamic zoom: keep all states in frame with a gentle zoom level.
-        const spread = Math.max(maxLon - minLon, maxLat - minLat);
-        const rawZoom = 2000 - (spread * 60);
-        const targetZoom = Math.min(Math.max(650, rawZoom), 1900);
-        
-        setTimeout(() => {
-          setCenter([centerLon, centerLat]);
-          setZoom(targetZoom);
-        }, 400);
+    const walkCoords = (node) => {
+      if (!node) return;
+
+      // Leaf coordinate: [lon, lat]
+      if (
+        Array.isArray(node) &&
+        node.length >= 2 &&
+        typeof node[0] === 'number' &&
+        typeof node[1] === 'number'
+      ) {
+        const lon = node[0];
+        const lat = node[1];
+        minLon = Math.min(minLon, lon);
+        maxLon = Math.max(maxLon, lon);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+        return;
       }
-    }
-  }, [isInView, states, stateInfoMap]);
+
+      if (Array.isArray(node)) {
+        node.forEach(walkCoords);
+      }
+    };
+
+    geoData.features.forEach((f) => {
+      if (f?.geometry?.coordinates) {
+        walkCoords(f.geometry.coordinates);
+      }
+    });
+
+    if (!isFinite(minLon) || !isFinite(maxLon) || !isFinite(minLat) || !isFinite(maxLat)) return;
+
+    const centerLon = (minLon + maxLon) / 2;
+    const centerLat = (minLat + maxLat) / 2;
+
+    // Dynamic zoom: keep the whole country in frame with a gentle zoom level.
+    const spread = Math.max(maxLon - minLon, maxLat - minLat);
+    const rawZoom = 2000 - (spread * 60);
+    const targetZoom = Math.min(Math.max(650, rawZoom), 1900);
+
+    didAutoFitRef.current = true;
+    setTimeout(() => {
+      setCenter([centerLon, centerLat]);
+      setZoom(targetZoom);
+    }, 200);
+  }, [isInView, geoData]);
 
   return (
     <div ref={containerRef} className="relative w-full overflow-hidden rounded-3xl" 
@@ -340,21 +391,24 @@ export default function IndiaMap({ states = [], cities = [], onStateClick }) {
                         style={{
                           default: {
                             fill: isActive ? (isHovered ? info.color : `${info.color}dd`) : '#f1f5f9',
-                            stroke: isActive ? '#fff' : '#cbd5e1',
-                            strokeWidth: 0.5,
+                            // Dark slate strokes so shared borders stay visible when two adjacent states are
+                            // both active (white strokes made Ladakh + J&K look like one green block).
+                            stroke: isActive ? '#475569' : '#64748b',
+                            strokeWidth: isActive ? 0.85 : 0.8,
                             outline: 'none',
                             transition: 'all 0.4s',
                             cursor: isActive ? 'pointer' : 'default'
                           },
                           hover: {
                             fill: isActive ? info.color : '#e2e8f0',
-                            stroke: '#fff',
-                            strokeWidth: 1,
+                            stroke: isActive ? '#334155' : '#64748b',
+                            strokeWidth: isActive ? 1.05 : 0.9,
                             outline: 'none',
                             cursor: isActive ? 'pointer' : 'default'
                           },
                           pressed: {
                             fill: info?.color || '#cbd5e1',
+                            stroke: isActive ? '#334155' : '#64748b',
                             outline: 'none',
                           }
                         }}
