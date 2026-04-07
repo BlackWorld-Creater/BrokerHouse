@@ -9,8 +9,8 @@ export default function Footer() {
         <div className="footer-grid">
           <div className="footer-brand">
             <div className="nav-logo" style={{ marginBottom: 20 }}>
-              <Building2 size={24} color="#3b82f6" />
-              Brokrs<span style={{ color: '#3b82f6' }}>House</span>
+              <Building2 size={24} color="#3b82f6" aria-hidden />
+              Brokrs <span style={{ color: '#3b82f6' }}>House</span>
             </div>
             <p>India's premier digital platform connecting licensed real estate brokers with verified institutional clients.</p>
           </div>

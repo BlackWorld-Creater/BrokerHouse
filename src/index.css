@@ -147,7 +147,7 @@ img {
   .hero-actions { flex-direction: column; width: 100%; }
   .hero-actions .btn { width: 100%; }
   .hero-stats { flex-wrap: wrap; justify-content: center; gap: 32px; margin-top: 40px; }
-  .hero-title { font-size: 38px; line-height: 1.1; }
+  .hero-title { font-size: clamp(28px, 8vw, 36px); line-height: 1.12; }
   .hero-subtitle { font-size: 16px; margin-bottom: 32px; }
   .hero-visual { margin-top: 40px; }
   .floating-badge { display: none !important; } /* Hide badges on very small screens to avoid overflow */
@@ -489,9 +489,9 @@ img {
 }
 
 .hero-title {
-  font-size: clamp(42px, 5.5vw, 72px);
+  font-size: clamp(32px, 4.2vw, 54px);
   font-weight: 800;
-  line-height: 1.08;
+  line-height: 1.12;
   letter-spacing: -0.025em;
   color: var(--text);
   margin-bottom: 24px;

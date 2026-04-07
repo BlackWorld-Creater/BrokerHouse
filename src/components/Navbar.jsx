@@ -42,8 +42,8 @@ export default function Navbar() {
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="container navbar-inner">
           <Link to="/" className="nav-logo" onClick={handleHomeClick}>
-            <Building2 size={28} color="#1e40af" />
-            Brokrs<span>House</span>
+            <Building2 size={28} color="#1e40af" aria-hidden />
+            Brokrs <span>House</span>
           </Link>
 
           <div className={`nav-toggle ${isMenuOpen ? 'active' : ''}`} onClick={toggleMenu}>

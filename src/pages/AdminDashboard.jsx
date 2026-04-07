@@ -48,6 +48,8 @@ export default function AdminDashboard() {
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const [assetsCrInput, setAssetsCrInput] = useState('0');
+  const [assetsSaveStatus, setAssetsSaveStatus] = useState('');
 
   const token = localStorage.getItem('admin_token');
 
@@ -59,12 +61,48 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
+  const fetchPublicStats = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/stats`);
+      if (!res.ok) return;
+      const d = await res.json();
+      setAssetsCrInput(String(d.assetsManagedCr ?? 0));
+    } catch (_) {}
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
-      await Promise.all([fetchBrokers(), fetchAdminStates(), fetchAdminCities()]);
+      await Promise.all([fetchBrokers(), fetchAdminStates(), fetchAdminCities(), fetchPublicStats()]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveAssetsCr = async () => {
+    setAssetsSaveStatus('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/site-settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          key: 'assets_managed_crores',
+          value: assetsCrInput,
+        }),
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('admin_token');
+        navigate('/admin');
+        return;
+      }
+      if (!res.ok) throw new Error('Save failed');
+      setAssetsSaveStatus('Saved.');
+      setTimeout(() => setAssetsSaveStatus(''), 2500);
+    } catch (e) {
+      setAssetsSaveStatus('Could not save.');
     }
   };
 
@@ -467,6 +505,43 @@ export default function AdminDashboard() {
           </div>
         </motion.div>
 
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          style={{
+            marginBottom: 24,
+            padding: '18px 20px',
+            background: 'var(--surface)',
+            borderRadius: 12,
+            border: '1px solid var(--border)',
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Homepage hero · Assets managed (₹ Cr)</div>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+            Active brokers and cities covered are calculated automatically from registrations and the city list. Set the
+            “Assets managed” number shown on the public landing page.
+          </p>
+          <div className="flex items-center gap-3" style={{ flexWrap: 'wrap' }}>
+            <input
+              type="number"
+              min={0}
+              className="form-input"
+              style={{ maxWidth: 140, fontSize: 14 }}
+              value={assetsCrInput}
+              onChange={(e) => setAssetsCrInput(e.target.value)}
+            />
+            <button type="button" className="btn btn-primary btn-sm" onClick={saveAssetsCr}>
+              Save
+            </button>
+            {assetsSaveStatus && (
+              <span style={{ fontSize: 13, color: assetsSaveStatus.startsWith('Saved') ? 'var(--success)' : 'var(--danger)' }}>
+                {assetsSaveStatus}
+              </span>
+            )}
+          </div>
+        </motion.div>
+
         {/* Search & Table */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -521,6 +596,8 @@ export default function AdminDashboard() {
                     <tr>
                       <th>#</th>
                       <th>Broker Name</th>
+                      <th>Registered as</th>
+                      <th>Assist mgmt</th>
                       <th>Firm Name</th>
                       <th>Mobile</th>
                       <th>WhatsApp</th>
@@ -535,6 +612,12 @@ export default function AdminDashboard() {
                       <tr key={b.id}>
                         <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{i + 1}</td>
                         <td className="name-cell">{b.name}</td>
+                        <td style={{ fontSize: 13 }}>
+                          {b.registered_as === 'individual' ? 'Individual' : 'Broker'}
+                        </td>
+                        <td style={{ fontSize: 13 }}>
+                          {b.assist_manage === 'yes' ? 'Yes' : b.assist_manage === 'no' ? 'No' : '—'}
+                        </td>
                         <td style={{ fontSize: 13, fontWeight: 500 }}>{b.firm_name || '—'}</td>
                         <td>
                           <a href={`tel:${b.mobile}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>

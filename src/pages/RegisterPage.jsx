@@ -9,11 +9,15 @@ import { API_URL } from '../config';
 
 export default function RegisterPage() {
   const [activeRegions, setActiveRegions] = useState([]);
+  const coveringAreasRef = useRef([{ state: '', city: '', cities: [] }]);
   const [formData, setFormData] = useState({
     name: '', firm_name: '', mobile: '', whatsapp: '',
-    broker_location: '', state: ''
+    broker_location: '', state: '',
+    registered_as: 'broker',
+    assist_manage: '',
   });
   const [coveringAreas, setCoveringAreas] = useState([{ state: '', city: '', cities: [] }]);
+  coveringAreasRef.current = coveringAreas;
   const [whatsappSame, setWhatsappSame] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -30,23 +34,40 @@ export default function RegisterPage() {
     }
   }, [coveringAreas.length]);
 
-  // Fetch active states from our server — auto-refresh on focus & every 30s
+  /** Re-fetch city lists for each row from admin-managed `/api/cities` (stays in sync when admin adds cities). */
+  const refreshCityListsForRows = () => {
+    const prev = coveringAreasRef.current;
+    Promise.all(
+      prev.map(async (area) => {
+        if (!area.state) return { ...area, cities: [] };
+        try {
+          const res = await fetch(`${API_URL}/api/cities?state_id=${area.state}`);
+          const data = await res.json();
+          return { ...area, cities: Array.isArray(data) ? data : [] };
+        } catch {
+          return area;
+        }
+      })
+    ).then((next) => setCoveringAreas(next));
+  };
+
   const fetchStates = () => {
     fetch(`${API_URL}/api/states`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setActiveRegions(data);
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setActiveRegions(data);
+          refreshCityListsForRows();
+        }
       })
-      .catch(err => console.error('Error fetching states:', err));
+      .catch((err) => console.error('Error fetching states:', err));
   };
 
   useEffect(() => {
     fetchStates();
 
-    // Poll every 30 seconds for admin changes
-    const interval = setInterval(fetchStates, 30000);
+    const interval = setInterval(fetchStates, 15000);
 
-    // Refetch when user switches back to this tab
     const onFocus = () => fetchStates();
     window.addEventListener('focus', onFocus);
 
@@ -109,6 +130,14 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.registered_as) {
+      setError('Please select how you are registering');
+      return;
+    }
+    if (!formData.assist_manage || !['yes', 'no'].includes(formData.assist_manage)) {
+      setError('Please select an Assist management option');
+      return;
+    }
     if (!formData.broker_location) {
       setError('Please Enter your location');
       return;
@@ -127,6 +156,8 @@ export default function RegisterPage() {
     const submissionData = {
       ...formData,
       state: formData.state || '',
+      registered_as: formData.registered_as,
+      assist_manage: formData.assist_manage,
       covering_location: JSON.stringify(validCovering.map(a => {
         const stateName = activeRegions.find(r => r.id.toString() === a.state)?.name || a.state;
         return `${a.city}, ${stateName}`;
@@ -210,6 +241,36 @@ export default function RegisterPage() {
                     <div className="flex flex-col gap-6">
                       <div className="grid grid-2 gap-6">
                         <div className="form-group">
+                          <label className="form-label">Registered as *</label>
+                          <select
+                            name="registered_as"
+                            required
+                            className="form-input"
+                            value={formData.registered_as}
+                            onChange={handleChange}
+                          >
+                            <option value="broker">Broker</option>
+                            <option value="individual">Individual</option>
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Assist management *</label>
+                          <select
+                            name="assist_manage"
+                            required
+                            className="form-input"
+                            value={formData.assist_manage}
+                            onChange={handleChange}
+                          >
+                            <option value="">Select…</option>
+                            <option value="no">No assistance needed</option>
+                            <option value="yes">Yes — I want assistance</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-2 gap-6">
+                        <div className="form-group">
                           <label className="form-label">Full Name *</label>
                           <input name="name" required className="form-input" placeholder="Broker Full Name" value={formData.name} onChange={handleChange} />
                         </div>
@@ -283,8 +344,10 @@ export default function RegisterPage() {
                                 value={area.city} onChange={(e) => updateCoveringArea(index, 'city', e.target.value)}
                                 disabled={!area.state}
                               >
-                                <option value="">{area.state ? 'Select City' : 'Please select state first'}</option>
-                                {area.cities.map((city, idx) => <option key={idx} value={city.name}>{city.name}</option>)}
+                                <option value="">{area.state ? 'Select city (from admin list)' : 'Please select state first'}</option>
+                                {area.cities.map((city) => (
+                                  <option key={city.id ?? city.name} value={city.name}>{city.name}</option>
+                                ))}
                               </select>
                               {coveringAreas.length > 1 && (
                                 <button type="button" onClick={() => removeCoveringArea(index)} style={{ padding: 12, color: 'var(--danger)' }}>
@@ -308,7 +371,7 @@ export default function RegisterPage() {
                   <h3 style={{ fontSize: 28, fontWeight: 800, marginBottom: 12 }}>Registration Successful!</h3>
                   <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginBottom: 32 }}>Welcome onboard!</p>
                   <div className="flex gap-4 justify-center">
-                    <button onClick={() => { setSuccess(false); setFormData({ name: '', firm_name: '', mobile: '', whatsapp: '', broker_location: '' }); setCoveringAreas([{ state: '', city: '', cities: [] }]); }} className="btn btn-outline">Register Another</button>
+                    <button onClick={() => { setSuccess(false); setFormData({ name: '', firm_name: '', mobile: '', whatsapp: '', broker_location: '', state: '', registered_as: 'broker', assist_manage: '' }); setCoveringAreas([{ state: '', city: '', cities: [] }]); }} className="btn btn-outline">Register Another</button>
                     <Link to="/" className="btn btn-primary">Back to Home <ArrowRight size={16} /></Link>
                   </div>
                 </motion.div>

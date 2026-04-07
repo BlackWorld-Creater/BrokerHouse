@@ -49,6 +49,12 @@ async function initDB() {
     try {
       await pool.query(`ALTER TABLE "BrokrsHouse" ADD COLUMN firm_name VARCHAR(255) DEFAULT ''`);
     } catch(e) {}
+    try {
+      await pool.query(`ALTER TABLE "BrokrsHouse" ADD COLUMN registered_as VARCHAR(32) DEFAULT 'broker'`);
+    } catch(e) {}
+    try {
+      await pool.query(`ALTER TABLE "BrokrsHouse" ADD COLUMN assist_manage VARCHAR(64) DEFAULT ''`);
+    } catch(e) {}
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS "States" (
@@ -67,6 +73,17 @@ async function initDB() {
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT NOW()
       )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS site_settings (
+        key VARCHAR(64) PRIMARY KEY,
+        value TEXT NOT NULL DEFAULT '0'
+      )
+    `);
+    await pool.query(`
+      INSERT INTO site_settings (key, value) VALUES ('assets_managed_crores', '0')
+      ON CONFLICT (key) DO NOTHING
     `);
 
     // Ensure the state_id column exists and has proper cascading delete
@@ -117,17 +134,42 @@ const ADMIN_PASSWORD = 'Pass@123';
 
 // POST /api/register — Broker registration
 app.post('/api/register', async (req, res) => {
-  const { name, firm_name, mobile, whatsapp, broker_location, state, covering_location } = req.body;
+  const {
+    name,
+    firm_name,
+    mobile,
+    whatsapp,
+    broker_location,
+    state,
+    covering_location,
+    registered_as,
+    assist_manage,
+  } = req.body;
 
   if (!name || !mobile || !whatsapp || !broker_location || !covering_location) {
     return res.status(400).json({ error: 'All fields are required' });
   }
 
+  const regAs = registered_as === 'individual' ? 'individual' : 'broker';
+  const assistRaw = typeof assist_manage === 'string' ? assist_manage.trim() : '';
+  const assist =
+    assistRaw === 'yes' || assistRaw === 'no' ? assistRaw : assistRaw ? assistRaw.slice(0, 64) : '';
+
   try {
     const result = await pool.query(
-      `INSERT INTO "BrokrsHouse" (name, firm_name, mobile, whatsapp, broker_location, state, covering_location) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [name, firm_name || '', mobile, whatsapp, broker_location, state, covering_location]
+      `INSERT INTO "BrokrsHouse" (name, firm_name, mobile, whatsapp, broker_location, state, covering_location, registered_as, assist_manage) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [
+        name,
+        firm_name || '',
+        mobile,
+        whatsapp,
+        broker_location,
+        state || '',
+        covering_location,
+        regAs,
+        assist,
+      ]
     );
     res.status(201).json({ message: 'Registration successful', broker: result.rows[0] });
   } catch (err) {
@@ -188,6 +230,27 @@ app.get('/api/states', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Server error fetching states' });
+  }
+});
+
+// GET /api/stats — Public landing-page metrics (brokers & cities from DB; assets placeholder for admin later)
+app.get('/api/stats', async (req, res) => {
+  try {
+    const [brokersRes, citiesRes, assetsRes] = await Promise.all([
+      pool.query('SELECT COUNT(*)::int AS c FROM "BrokrsHouse"'),
+      pool.query('SELECT COUNT(*)::int AS c FROM "Cities" WHERE is_active = true'),
+      pool.query(`SELECT value FROM site_settings WHERE key = 'assets_managed_crores'`),
+    ]);
+    const assetsRaw = assetsRes.rows[0]?.value ?? '0';
+    const assetsNum = Number.parseInt(String(assetsRaw), 10);
+    res.json({
+      activeBrokers: brokersRes.rows[0]?.c ?? 0,
+      citiesCovered: citiesRes.rows[0]?.c ?? 0,
+      assetsManagedCr: Number.isFinite(assetsNum) ? assetsNum : 0,
+    });
+  } catch (err) {
+    console.error('Stats error:', err.message);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -327,6 +390,26 @@ app.delete('/api/admin/cities/:id', authMiddleware, async (req, res) => {
     res.json({ message: 'City deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Server error deleting city' });
+  }
+});
+
+// Update public landing-page metrics (e.g. assets ₹ Cr shown in hero)
+app.put('/api/admin/site-settings', authMiddleware, async (req, res) => {
+  const { key, value } = req.body || {};
+  if (key !== 'assets_managed_crores') {
+    return res.status(400).json({ error: 'Unsupported key' });
+  }
+  const n = Math.max(0, parseInt(String(value), 10) || 0);
+  try {
+    await pool.query(
+      `INSERT INTO site_settings (key, value) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [key, String(n)]
+    );
+    res.json({ key, value: String(n) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not save setting' });
   }
 });
 

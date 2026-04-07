@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, animate, AnimatePresence } from 'framer-motion';
+import { motion, animate } from 'framer-motion';
 import {
   Building2, ChevronRight, Shield, Globe, MapPin,
-  TrendingUp, Users, ArrowRight, CheckCircle2,
-  Phone, Star, Briefcase, BarChart3, Search, ArrowDown, X
+  ArrowRight, CheckCircle2,
+  Phone, Star, Briefcase, BarChart3, Search, ArrowDown,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { API_URL } from '../config';
-import IndiaMap from '../components/IndiaMap';
+import CitiesShowcase from '../components/CitiesShowcase';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
@@ -194,6 +194,21 @@ function HeroGraph() {
 }
 
 function Hero() {
+  const [stats, setStats] = useState({ activeBrokers: 0, assetsManagedCr: 0, citiesCovered: 0 });
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/stats`)
+      .then((r) => r.json())
+      .then((data) => {
+        setStats({
+          activeBrokers: Number(data.activeBrokers) || 0,
+          assetsManagedCr: Number(data.assetsManagedCr) || 0,
+          citiesCovered: Number(data.citiesCovered) || 0,
+        });
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <section className="hero">
       <div className="hero-bg">
@@ -223,9 +238,9 @@ function Hero() {
           </motion.div>
           <motion.div variants={fadeUp} custom={4} className="hero-stats">
             {[
-              { value: 2500, label: 'Active Brokers', suffix: '+' },
-              { value: 482, label: 'Assets Managed', prefix: '₹', suffix: 'Cr' },
-              { value: 150, label: 'Cities Covered', suffix: '+' },
+              { value: stats.activeBrokers, label: 'Active Brokers', suffix: '+' },
+              { value: stats.assetsManagedCr, label: 'Assets Managed', prefix: '₹', suffix: 'Cr' },
+              { value: stats.citiesCovered, label: 'Cities Covered', suffix: '+' },
             ].map((s, i) => (
               <div key={i}>
                 <div className="hero-stat-value">
@@ -295,21 +310,13 @@ function Features() {
 }
 
 function NetworkSection() {
-  const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedState, setSelectedState] = useState(null);
 
-  const fetchStatesAndCities = async () => {
+  const fetchCities = async () => {
     try {
-      const [statesData, citiesData] = await Promise.all([
-        fetch(`${API_URL}/api/states`).then(res => res.json()),
-        fetch(`${API_URL}/api/cities`).then(res => res.json())
-      ]);
-
-      // Always treat `state_id` as a number for reliable matching downstream.
-      setStates((statesData || []).filter(s => s.is_active !== false));
-      setCities((citiesData || []).filter(c => c.is_active !== false));
+      const citiesData = await fetch(`${API_URL}/api/cities`).then((res) => res.json());
+      setCities((citiesData || []).filter((c) => c.is_active !== false));
     } catch (err) {
       console.error(err);
     } finally {
@@ -318,12 +325,9 @@ function NetworkSection() {
   };
 
   useEffect(() => {
-    // Initial load + polling for admin sync.
-    fetchStatesAndCities();
-
-    // Fast sync so admin changes are reflected quickly.
-    const interval = setInterval(fetchStatesAndCities, 5000);
-    const onFocus = () => fetchStatesAndCities();
+    fetchCities();
+    const interval = setInterval(fetchCities, 5000);
+    const onFocus = () => fetchCities();
     window.addEventListener('focus', onFocus);
 
     return () => {
@@ -331,10 +335,6 @@ function NetworkSection() {
       window.removeEventListener('focus', onFocus);
     };
   }, []);
-
-  const stateCities = selectedState 
-    ? cities.filter(c => Number(c.state_id) === Number(selectedState.id))
-    : [];
 
   return (
     <section id="network" className="section" style={{ background: 'var(--bg)', position: 'relative' }}>
@@ -352,156 +352,15 @@ function NetworkSection() {
         </motion.div>
 
         <motion.div
-          style={{ marginTop: 50, display: 'flex', justifyContent: 'center' }}
+          style={{ marginTop: 44, display: 'flex', justifyContent: 'center' }}
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7, delay: 0.2 }}
         >
-          <div style={{ width: '100%', maxWidth: 850 }}>
-            <IndiaMap
-              states={states}
-              cities={cities}
-              onStateClick={(s) => setSelectedState(s)}
-            />
-          </div>
+          <CitiesShowcase cities={cities} loading={loading} />
         </motion.div>
       </div>
-
-      {/* City Dialog */}
-      <AnimatePresence>
-        {selectedState && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedState(null)}
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(15, 23, 42, 0.4)',
-                backdropFilter: 'blur(8px)',
-                zIndex: 1000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 20
-              }}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  background: '#fff',
-                  width: '100%',
-                  maxWidth: 600,
-                  borderRadius: 24,
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                  overflow: 'hidden',
-                  position: 'relative'
-                }}
-              >
-                {/* Header */}
-                <div style={{ 
-                  padding: '24px 32px', 
-                  background: 'linear-gradient(to right, #f8fafc, #fff)',
-                  borderBottom: '1px solid #f1f5f9',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'between'
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', letterSpacing: '0.05em', marginBottom: 4 }}>
-                      REGIONAL COVERAGE
-                    </div>
-                    <h3 style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>{selectedState.name}</h3>
-                  </div>
-                  <button 
-                    onClick={() => setSelectedState(null)}
-                    style={{ 
-                      padding: 10, 
-                      borderRadius: '50%', 
-                      background: '#f1f5f9', 
-                      border: 'none', 
-                      cursor: 'pointer',
-                      color: '#64748b',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#f1f5f9'}
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                {/* Cities Grid */}
-                <div style={{ padding: '32px', maxHeight: '60vh', overflowY: 'auto' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
-                    {stateCities.length > 0 ? stateCities.map((city, idx) => (
-                      <motion.div
-                        key={city.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.05 }}
-                        style={{
-                          padding: '16px',
-                          background: '#f8fafc',
-                          borderRadius: 16,
-                          border: '1px solid #e2e8f0',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 12,
-                          transition: 'all 0.3s'
-                        }}
-                        onMouseEnter={e => {
-                          e.currentTarget.style.borderColor = 'var(--primary-soft)';
-                          e.currentTarget.style.background = '#fff';
-                          e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.05)';
-                        }}
-                        onMouseLeave={e => {
-                          e.currentTarget.style.borderColor = '#e2e8f0';
-                          e.currentTarget.style.background = '#f8fafc';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
-                      >
-                        <div style={{ 
-                          width: 32, height: 32, borderRadius: 8, 
-                          background: '#fff', border: '1px solid #e2e8f0',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: 'var(--primary)'
-                        }}>
-                          <MapPin size={16} />
-                        </div>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>{city.name}</span>
-                      </motion.div>
-                    )) : (
-                      <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                        No active cities found in this region.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div style={{ padding: '24px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
-                  <p style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}>
-                    Looking for a property in {selectedState.name}? 
-                    <Link to="/register" style={{ color: 'var(--primary)', fontWeight: 700, marginLeft: 6, textDecoration: 'none' }}>
-                      Register now
-                    </Link>
-                  </p>
-                </div>
-              </motion.div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </section>
   );
 }
