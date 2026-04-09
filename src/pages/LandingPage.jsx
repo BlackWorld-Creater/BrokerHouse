@@ -10,6 +10,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { API_URL } from '../config';
 import CitiesShowcase from '../components/CitiesShowcase';
+import RegisterForm from '../components/RegisterForm';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
@@ -229,9 +230,9 @@ function Hero() {
             Whether you are a <strong>Broker</strong> looking to scale your verified network, or an <strong>Investor</strong> seeking premium property assets, BrokrsHouse brings the best opportunities directly to you.
           </motion.p>
           <motion.div variants={fadeUp} custom={3} className="hero-actions">
-            <Link to="/register" className="btn btn-primary btn-lg">
+            <a href="#contact" className="btn btn-primary btn-lg">
               Start Registration <ChevronRight size={18} />
-            </Link>
+            </a>
             <a href="#features" className="btn btn-outline btn-lg">
               Explore Platform
             </a>
@@ -424,24 +425,24 @@ function ProcessSteps() {
 function CTASection() {
   return (
     <section id="contact" className="section" style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', color: 'var(--text)', borderTop: '1px solid var(--border-light)' }}>
-      <div className="container text-center">
+      <div className="container">
         <motion.div
           initial="hidden" whileInView="visible" viewport={{ once: true }}
           variants={stagger}
         >
           <motion.h2
             variants={fadeUp}
-            style={{ fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 800, marginBottom: 18, lineHeight: 1.15 }}
+            style={{ fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 800, marginBottom: 18, lineHeight: 1.15, textAlign: 'center' }}
           >
             Ready to Grow Your<br />Real Estate Business?
           </motion.h2>
-          <motion.p variants={fadeUp} style={{ fontSize: 17, color: 'var(--text-secondary)', maxWidth: 500, margin: '0 auto 40px', lineHeight: 1.7 }}>
+          <motion.p variants={fadeUp} style={{ fontSize: 17, color: 'var(--text-secondary)', maxWidth: 700, margin: '0 auto 34px', lineHeight: 1.7, textAlign: 'center' }}>
             Register today and become part of India's most trusted broker network. It takes less than 2 minutes.
           </motion.p>
-          <motion.div variants={fadeUp}>
-            <Link to="/register" className="btn btn-primary btn-lg">
-              Register as Broker <ArrowRight size={18} />
-            </Link>
+          <motion.div variants={fadeUp} style={{ marginTop: 10 }}>
+            <div style={{ maxWidth: 720, margin: '0 auto' }}>
+              <RegisterForm variant="cta" />
+            </div>
           </motion.div>
         </motion.div>
       </div>

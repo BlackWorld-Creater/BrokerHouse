@@ -597,7 +597,7 @@ export default function AdminDashboard() {
                       <th>#</th>
                       <th>Broker Name</th>
                       <th>Registered as</th>
-                      <th>Assist mgmt</th>
+                      <th>Assets</th>
                       <th>Firm Name</th>
                       <th>Mobile</th>
                       <th>WhatsApp</th>
@@ -616,7 +616,7 @@ export default function AdminDashboard() {
                           {b.registered_as === 'individual' ? 'Individual' : 'Broker'}
                         </td>
                         <td style={{ fontSize: 13 }}>
-                          {b.assist_manage === 'yes' ? 'Yes' : b.assist_manage === 'no' ? 'No' : '—'}
+                          {b.assist_manage?.trim() ? b.assist_manage : '—'}
                         </td>
                         <td style={{ fontSize: 13, fontWeight: 500 }}>{b.firm_name || '—'}</td>
                         <td>

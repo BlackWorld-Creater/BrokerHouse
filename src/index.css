@@ -958,12 +958,14 @@ img {
   background: var(--surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 1320px;
 }
 
 .data-table th {
