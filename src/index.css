@@ -1022,7 +1022,7 @@ img {
 
 .footer-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr;
   gap: 48px;
   margin-bottom: 56px;
 }
@@ -1054,6 +1054,19 @@ img {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.footer-links-col--right {
+  text-align: right;
+}
+
+.footer-links-col--right .footer-links {
+  align-items: flex-end;
+}
+
+@media (max-width: 768px) {
+  .footer-links-col--right { text-align: left; }
+  .footer-links-col--right .footer-links { align-items: flex-start; }
 }
 
 .footer-links a {

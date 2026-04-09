@@ -14,7 +14,7 @@ export default function Footer() {
             </div>
             <p>India's premier digital platform connecting licensed real estate brokers with verified institutional clients.</p>
           </div>
-          <div>
+          <div className="footer-links-col footer-links-col--right">
             <h4 className="footer-heading">Important Links</h4>
             <ul className="footer-links">
               <li><Link to="/register">Register as Broker</Link></li>

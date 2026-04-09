@@ -134,10 +134,6 @@ export default function RegisterPage() {
       setError('Please select how you are registering');
       return;
     }
-    if (!formData.assist_manage || !['yes', 'no'].includes(formData.assist_manage)) {
-      setError('Please select an Assist management option');
-      return;
-    }
     if (!formData.broker_location) {
       setError('Please Enter your location');
       return;
@@ -239,34 +235,18 @@ export default function RegisterPage() {
 
                   <form onSubmit={handleSubmit}>
                     <div className="flex flex-col gap-6">
-                      <div className="grid grid-2 gap-6">
-                        <div className="form-group">
-                          <label className="form-label">Registered as *</label>
-                          <select
-                            name="registered_as"
-                            required
-                            className="form-input"
-                            value={formData.registered_as}
-                            onChange={handleChange}
-                          >
-                            <option value="broker">Broker</option>
-                            <option value="individual">Individual</option>
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label">Assist management *</label>
-                          <select
-                            name="assist_manage"
-                            required
-                            className="form-input"
-                            value={formData.assist_manage}
-                            onChange={handleChange}
-                          >
-                            <option value="">Select…</option>
-                            <option value="no">No assistance needed</option>
-                            <option value="yes">Yes — I want assistance</option>
-                          </select>
-                        </div>
+                      <div className="form-group">
+                        <label className="form-label">Registered as *</label>
+                        <select
+                          name="registered_as"
+                          required
+                          className="form-input"
+                          value={formData.registered_as}
+                          onChange={handleChange}
+                        >
+                          <option value="broker">Broker</option>
+                          <option value="individual">Individual</option>
+                        </select>
                       </div>
 
                       <div className="grid grid-2 gap-6">
@@ -293,6 +273,17 @@ export default function RegisterPage() {
                             onChange={handleChange}
                           />
                         </div>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Assets</label>
+                        <input
+                          name="assist_manage"
+                          className="form-input"
+                          placeholder="e.g. 5"
+                          value={formData.assist_manage}
+                          onChange={handleChange}
+                        />
                       </div>
 
                       <div className="grid grid-2 gap-6">
